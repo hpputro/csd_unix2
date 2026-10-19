@@ -63,6 +63,9 @@ def plot(stats, rows, tok_col, budget, out):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    # STIX ships with matplotlib, so the serif face is the same on every machine
+    plt.rcParams.update({"font.family": "serif", "font.serif": ["STIXGeneral"], "mathtext.fontset": "stix"})
+
     projects = sorted(stats[:-1], key=lambda s: s["total"])
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1.25, 1]})
 

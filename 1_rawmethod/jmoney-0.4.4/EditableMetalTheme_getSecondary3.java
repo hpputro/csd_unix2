@@ -1,0 +1,1 @@
+    public ColorUIResource getSecondary3() { return secondary3; }

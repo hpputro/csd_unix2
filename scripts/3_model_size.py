@@ -139,6 +139,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     encoder, tokenizer = load(args.model)
     model = build_classifier(encoder, n_layers, tokenizer.pad_token_id).to(device)
+    gpu = f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else " (no GPU found, this will be slow)"
+    print(f"seed {seed}, {n_layers} layers: training on {device.type}{gpu}", flush=True)
 
     data_dir = args.comment_dir if args.representation == "comment" else args.nocomment_dir
     train, test = load_split(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), data_dir)
@@ -168,7 +170,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     start = time.time()
 
     model.train()
-    for _ in range(args.epochs):
+    for epoch in range(1, args.epochs + 1):
+        losses = []
         for ids, labels in batches(train, args.batch_size, tokenizer.pad_token_id, True, rng):
             ids, labels = ids.to(device), labels.to(device)
             with torch.autocast(device.type, enabled=use_amp):
@@ -180,6 +183,9 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
+            losses.append(loss.item())
+        print(f"  epoch {epoch:>2}/{args.epochs}: loss {statistics.mean(losses):.4f}, "
+              f"{time.time() - start:.0f}s elapsed", flush=True)
 
     train_seconds = time.time() - start
     emissions = tracker.stop() if tracker else None

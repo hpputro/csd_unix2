@@ -5,6 +5,7 @@ Reads the methods listed in switch_statements.csv from ds_comment/0 and writes
   - ds_comment/<k>/<project>/<file>: variant made by operator k (1-14)
   - ds_nocomment/<k>/<project>/<file>: that variant without comments
   - augmented_pool.csv: one row per method x operator with its status
+  - augmented_pool_summary.csv: status counts per operator
 
 Operator numbers follow the toolkit order (a-n in demo_refactor_java.py).
 A variant is written only when its status is "ok": the operator changed the
@@ -27,9 +28,9 @@ import os
 import random
 import sys
 import zlib
-from collections import Counter
 
 from count_tokens import SPECIAL_TOKENS, normalize_whitespace, strip_java_comments
+from pool_summary import save_and_print, summarize
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools", "java_refactor"))
@@ -125,6 +126,7 @@ def main():
     parser.add_argument("--model", default="microsoft/unixcoder-base")
     parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--out", default="augmented_pool.csv")
+    parser.add_argument("--summary", default="augmented_pool_summary.csv")
     args = parser.parse_args()
 
     import refactoring_methods
@@ -146,12 +148,8 @@ def main():
         writer.writeheader()
         writer.writerows(records)
 
-    statuses = sorted({r["status"] for r in records})
     print(f"{len(rows)} methods x {len(operators)} operators -> {args.out}")
-    print(f"{'op':>2} {'operator':22} " + " ".join(f"{s:>13}" for s in statuses))
-    for op_id, name in enumerate(OPERATORS, start=1):
-        counts = Counter(r["status"] for r in records if r["op_id"] == op_id)
-        print(f"{op_id:>2} {name:22} " + " ".join(f"{counts[s]:>13}" for s in statuses))
+    save_and_print(summarize(records), args.summary)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,31 @@ from collections import Counter
 STATUSES = ["ok", "unchanged", "syntax", "over_budget", "error", "source_syntax"]
 
 
+def summarize(rows):
+    """Return one row per operator with its status counts, plus a total row."""
+    operators = sorted({(int(r["op_id"]), r["operator"]) for r in rows})
+    table = []
+    for op_id, name in operators:
+        counts = Counter(r["status"] for r in rows if int(r["op_id"]) == op_id)
+        table.append({"op_id": op_id, "operator": name, **{s: counts[s] for s in STATUSES},
+                      "total": sum(counts.values())})
+    totals = Counter(r["status"] for r in rows)
+    table.append({"op_id": "", "operator": "Total", **{s: totals[s] for s in STATUSES}, "total": len(rows)})
+    return table
+
+
+def save_and_print(table, out):
+    with open(out, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(table[0]))
+        writer.writeheader()
+        writer.writerows(table)
+    cols = STATUSES + ["total"]
+    print(f"{'op':>2} {'operator':22} " + " ".join(f"{c:>13}" for c in cols))
+    for t in table:
+        print(f"{t['op_id']:>2} {t['operator']:22} " + " ".join(f"{t[c]:>13}" for c in cols))
+    print(f"-> {out}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--pool", default="augmented_pool.csv")
@@ -35,25 +60,10 @@ def main():
     if args.label:
         rows = [r for r in rows if r["label"] == args.label]
 
-    operators = sorted({(int(r["op_id"]), r["operator"]) for r in rows})
-    table = []
-    for op_id, name in operators:
-        counts = Counter(r["status"] for r in rows if int(r["op_id"]) == op_id)
-        table.append({"op_id": op_id, "operator": name, **{s: counts[s] for s in STATUSES},
-                      "total": sum(counts.values())})
-    totals = Counter(r["status"] for r in rows)
-    table.append({"op_id": "", "operator": "Total", **{s: totals[s] for s in STATUSES}, "total": len(rows)})
-
-    with open(args.out, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=list(table[0]))
-        writer.writeheader()
-        writer.writerows(table)
-
     methods = len({r["sample_id"] for r in rows})
-    print(f"{methods} methods x {len(operators)} operators -> {args.out}")
-    print(f"{'op':>2} {'operator':22} " + " ".join(f"{s:>13}" for s in STATUSES + ["total"]))
-    for t in table:
-        print(f"{t['op_id']:>2} {t['operator']:22} " + " ".join(f"{t[s]:>13}" for s in STATUSES + ["total"]))
+    operators = len({r["op_id"] for r in rows})
+    print(f"{methods} methods x {operators} operators")
+    save_and_print(summarize(rows), args.out)
 
 
 if __name__ == "__main__":

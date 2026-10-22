@@ -4,7 +4,7 @@ For every seed and layer count, fine-tunes UniXcoder keeping only the bottom
 k encoder layers (0 = embeddings only) on the unbalanced train split of
 datasets/dataset_seed<seed>.csv and scores it on the test split. Each run
 appends one row to results/model_size.csv (finished runs are skipped on a
-rerun); the figure plots accuracy, F1 and fine-tuning time against the
+rerun); the figure plots accuracy, F1, precision, recall and fine-tuning time against the
 parameter count, from the full model on the left to the smallest on the right.
 
 The classifier mean-pools UniXcoder's token embeddings, as UniXcoder's own
@@ -42,6 +42,8 @@ RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "represe
 
 ACC_COLOR = "#2a78d6"
 F1_COLOR = "#eb6834"
+PRECISION_COLOR = "#1baf7a"
+RECALL_COLOR = "#eda100"
 INK = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
@@ -248,8 +250,8 @@ def plot(results, out):
 
     # DejaVu Sans ships with matplotlib, so the figure is the same on every machine
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
-    fig, (ax, ax_time) = plt.subplots(2, 1, figsize=(7, 6.2), sharex=True,
-                                      gridspec_kw={"height_ratios": [1.6, 1]})
+    fig, (ax, ax_pr, ax_time) = plt.subplots(3, 1, figsize=(7, 8.6), sharex=True,
+                                             gridspec_kw={"height_ratios": [1.5, 1.5, 1]})
 
     by_layers = {}
     for r in results:
@@ -266,21 +268,35 @@ def plot(results, out):
         axis.plot(params, means, color=color, linewidth=2, marker="o", markersize=6, zorder=3)
         return means
 
-    # (a) scores; the x axis runs from the full model on the left to the smallest on the right
-    for metric, color, name in [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]:
-        means = draw(ax, metric, color)
-        ax.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
-        ax.text(params[0] - 1.5, means[0], name, color=INK, fontsize=9, va="center")
-    ax.set_ylabel("Score on the test split", color=MUTED)
-    ax.set_title(f"(a) Accuracy and F1-score (mean of seeds {', '.join(map(str, seeds))}; dots = single seeds)",
-                 loc="left", fontsize=10, color=INK, pad=10)
-    ax.legend(frameon=False, loc="lower left", fontsize=9)
+    # (a, b) scores; the x axis runs from the full model on the left to the smallest on the right
+    panels = [(ax, f"(a) Accuracy and F1-score (mean of seeds {', '.join(map(str, seeds))}; dots = single seeds)",
+               [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]),
+              (ax_pr, "(b) Precision and recall for the smelly class",
+               [("precision", PRECISION_COLOR, "Precision"), ("recall", RECALL_COLOR, "Recall")])]
+    for axis, title, series in panels:
+        ends = []
+        for metric, color, name in series:
+            means = draw(axis, metric, color)
+            axis.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
+            ends.append([means[0], name])
+        # Keep the end labels apart when the lines finish at nearly the same value
+        ends.sort()
+        gap = 0.06
+        for lower, upper in zip(ends, ends[1:]):
+            if upper[0] - lower[0] < gap:
+                middle = (lower[0] + upper[0]) / 2
+                lower[0], upper[0] = middle - gap / 2, middle + gap / 2
+        for y, name in ends:
+            axis.text(params[0] - 1.5, y, name, color=INK, fontsize=9, va="center")
+        axis.set_ylabel("Score on the test split", color=MUTED)
+        axis.set_title(title, loc="left", fontsize=10, color=INK, pad=10)
+        axis.legend(frameon=False, loc="lower left", fontsize=9)
 
-    # (b) fine-tuning time
+    # (c) fine-tuning time
     draw(ax_time, "train_seconds", INK, scale=1 / 60)
     ax_time.set_ylabel("Minutes", color=MUTED)
     ax_time.set_ylim(bottom=0)
-    ax_time.set_title("(b) Fine-tuning time", loc="left", fontsize=10, color=INK)
+    ax_time.set_title("(c) Fine-tuning time", loc="left", fontsize=10, color=INK)
     ax_time.set_xlabel("Parameters (millions)", color=MUTED)
 
     ax.set_xlim(max(params) + 4, min(params) - 14)
@@ -289,7 +305,7 @@ def plot(results, out):
     top.tick_params(colors=MUTED, labelsize=8, length=0)
     top.spines["top"].set_visible(False)
     top.set_xlabel("Encoder layers kept", color=MUTED, fontsize=9)
-    for axis in (ax, ax_time):
+    for axis in (ax, ax_pr, ax_time):
         axis.spines[["top", "right"]].set_visible(False)
         axis.spines[["left", "bottom"]].set_color(GRID)
         axis.tick_params(colors=MUTED, labelsize=9)

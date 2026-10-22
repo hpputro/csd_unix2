@@ -196,7 +196,13 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             f"{time.time() - start:.0f}s elapsed")
 
     train_seconds = time.time() - start
-    emissions = tracker.stop() if tracker else None
+    energy = None
+    if tracker:
+        # CodeCarbon swallows its own errors in stop() and then never sets final_emissions_data
+        tracker.stop()
+        energy = getattr(tracker, "final_emissions_data", None)
+        if energy is None:
+            log("CodeCarbon could not report this run; energy and emissions are left empty")
 
     log("scoring the test split")
     model.eval()
@@ -219,9 +225,9 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "train_seconds": round(train_seconds, 1),
         "test_seconds": round(test_seconds, 2),
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
-        "energy_kwh": round(tracker.final_emissions_data.energy_consumed, 6) if tracker else "",
-        "emissions_kg": round(emissions, 6) if emissions is not None else "",
-        "country": args.country if tracker else "",
+        "energy_kwh": round(energy.energy_consumed, 6) if energy else "",
+        "emissions_kg": round(energy.emissions, 6) if energy else "",
+        "country": args.country if energy else "",
         "epochs": args.epochs, "lr": args.lr, "batch_size": args.batch_size, "max_len": args.max_len,
     }
 

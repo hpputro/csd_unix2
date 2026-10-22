@@ -4,8 +4,9 @@ For every seed and layer count, fine-tunes UniXcoder keeping only the bottom
 k encoder layers (0 = embeddings only) on the unbalanced train split of
 datasets/dataset_seed<seed>.csv and scores it on the test split. Each run
 appends one row to results/model_size.csv (finished runs are skipped on a
-rerun); the figure plots accuracy, F1, precision and fine-tuning time against the
-parameter count, from the full model on the left to the smallest on the right.
+rerun); the figure plots accuracy, F1, precision, fine-tuning time and, when
+measured, energy against the parameter count, from the full model on the left
+to the smallest on the right.
 
 The classifier mean-pools UniXcoder's token embeddings, as UniXcoder's own
 fine-tuning scripts do, and feeds them to a linear head. Inputs follow the
@@ -249,8 +250,15 @@ def plot(results, out):
 
     # DejaVu Sans ships with matplotlib, so the figure is the same on every machine
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
-    fig, (ax, ax_time) = plt.subplots(2, 1, figsize=(7, 6.6), sharex=True,
-                                      gridspec_kw={"height_ratios": [1.7, 1]})
+    # Energy gets its own panel only when CodeCarbon measured every run
+    has_energy = all(r.get("energy_kwh") not in (None, "") for r in results)
+    if has_energy:
+        fig, (ax, ax_time, ax_energy) = plt.subplots(3, 1, figsize=(7, 8.4), sharex=True,
+                                                     gridspec_kw={"height_ratios": [1.7, 1, 1]})
+    else:
+        fig, (ax, ax_time) = plt.subplots(2, 1, figsize=(7, 6.6), sharex=True,
+                                          gridspec_kw={"height_ratios": [1.7, 1]})
+        ax_energy = None
 
     by_layers = {}
     for r in results:
@@ -296,7 +304,16 @@ def plot(results, out):
     ax_time.set_ylabel("Minutes", color=MUTED)
     ax_time.set_ylim(bottom=0)
     ax_time.set_title("(b) Fine-tuning time", loc="left", fontsize=10, color=INK)
-    ax_time.set_xlabel("Parameters (millions)", color=MUTED)
+
+    # (c) fine-tuning energy
+    if ax_energy is not None:
+        draw(ax_energy, "energy_kwh", INK, scale=1000)
+        ax_energy.set_ylabel("Wh", color=MUTED)
+        ax_energy.set_ylim(bottom=0)
+        country = ", ".join(sorted({r["country"] for r in results if r.get("country")}))
+        ax_energy.set_title(f"(c) Fine-tuning energy (CodeCarbon{', ' + country if country else ''})",
+                            loc="left", fontsize=10, color=INK)
+    (ax_energy or ax_time).set_xlabel("Parameters (millions)", color=MUTED)
 
     ax.set_xlim(max(params) + 4, min(params) - 14)
     top = ax.secondary_xaxis("top")
@@ -304,7 +321,7 @@ def plot(results, out):
     top.tick_params(colors=MUTED, labelsize=8, length=0)
     top.spines["top"].set_visible(False)
     top.set_xlabel("Encoder layers kept", color=MUTED, fontsize=9)
-    for axis in (ax, ax_time):
+    for axis in [a for a in (ax, ax_time, ax_energy) if a is not None]:
         axis.spines[["top", "right"]].set_visible(False)
         axis.spines[["left", "bottom"]].set_color(GRID)
         axis.tick_params(colors=MUTED, labelsize=9)

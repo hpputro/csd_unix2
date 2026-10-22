@@ -117,7 +117,7 @@ def plot(stats, rows, tok_col, budget, out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tokens", default="token_counts.csv")
-    parser.add_argument("--code-dir", default="1_rawmethod")
+    parser.add_argument("--code-dir", default="ds_comment/0")
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--out", default="dataset_stats.csv")

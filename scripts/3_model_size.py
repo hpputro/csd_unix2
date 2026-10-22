@@ -44,6 +44,10 @@ MUTED = "#52514e"
 GRID = "#e4e3df"
 
 
+def log(message):
+    print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+
+
 def set_seed(seed):
     import numpy as np
     import torch
@@ -137,15 +141,18 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
 
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"seed {seed}, {n_layers} layers: loading {args.model} (downloaded on first use)")
     encoder, tokenizer = load(args.model)
     model = build_classifier(encoder, n_layers, tokenizer.pad_token_id).to(device)
     gpu = f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else " (no GPU found, this will be slow)"
-    print(f"seed {seed}, {n_layers} layers: training on {device.type}{gpu}", flush=True)
+    log(f"seed {seed}, {n_layers} layers: training on {device.type}{gpu}")
 
+    log("reading and tokenizing the dataset")
     data_dir = args.comment_dir if args.representation == "comment" else args.nocomment_dir
     train, test = load_split(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), data_dir)
     train = [(encode(tokenizer, code, args.max_len), label) for code, label in train]
     test = [(encode(tokenizer, code, args.max_len), label) for code, label in test]
+    log(f"{len(train)} train and {len(test)} test methods")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     steps = args.epochs * math.ceil(len(train) / args.batch_size)
@@ -163,6 +170,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run with --no-codecarbon")
         # Offline mode takes the grid carbon intensity of the given country instead of
         # guessing the location from the IP address, so every machine reports the same way
+        log(f"starting CodeCarbon ({args.country})")
         tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False)
         tracker.start()
     if device.type == "cuda":
@@ -184,12 +192,13 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             scaler.update()
             scheduler.step()
             losses.append(loss.item())
-        print(f"  epoch {epoch:>2}/{args.epochs}: loss {statistics.mean(losses):.4f}, "
-              f"{time.time() - start:.0f}s elapsed", flush=True)
+        log(f"  epoch {epoch:>2}/{args.epochs}: loss {statistics.mean(losses):.4f}, "
+            f"{time.time() - start:.0f}s elapsed")
 
     train_seconds = time.time() - start
     emissions = tracker.stop() if tracker else None
 
+    log("scoring the test split")
     model.eval()
     start = time.time()
     preds, labels = [], []
@@ -308,12 +317,17 @@ def main():
     args = parser.parse_args()
 
     if not args.plot_only:
+        # torch and transformers take a while to import, so say so before the screen goes quiet
+        log("importing torch and transformers")
+        import torch  # noqa: F401
+        import transformers  # noqa: F401
+        log("imports done")
         done = {(r["seed"], r["layers"], r["representation"]) for r in read_results(args.out)}
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         for seed in args.seeds:
             for n_layers in args.layers:
                 if (str(seed), str(n_layers), args.representation) in done:
-                    print(f"[skip] seed {seed}, {n_layers} layers: already in {args.out}")
+                    log(f"[skip] seed {seed}, {n_layers} layers: already in {args.out}")
                     continue
                 result = run(seed, n_layers, args)
                 new_file = not os.path.exists(args.out)
@@ -322,8 +336,8 @@ def main():
                     if new_file:
                         writer.writeheader()
                     writer.writerow(result)
-                print(f"seed {seed}, {n_layers:>2} layers, {result['params_total'] / 1e6:6.1f}M params: "
-                      f"acc {result['accuracy']:.3f}, F1 {result['f1']:.3f}, {result['train_seconds']}s")
+                log(f"seed {seed}, {n_layers:>2} layers, {result['params_total'] / 1e6:6.1f}M params: "
+                    f"acc {result['accuracy']:.3f}, F1 {result['f1']:.3f}, {result['train_seconds']}s")
 
     results = [r for r in read_results(args.out) if r["representation"] == args.representation]
     if results:

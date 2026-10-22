@@ -8,18 +8,22 @@ rerun); the figure plots accuracy, F1, precision, fine-tuning time and, when
 measured, energy against the parameter count, from the full model on the left
 to the smallest on the right.
 
-The classifier mean-pools UniXcoder's token embeddings, as UniXcoder's own
-fine-tuning scripts do, and feeds them to a linear head. Inputs follow the
-encoder-only format <s> <encoder-only> </s> code </s> with whitespace
-collapsed. The model of the last epoch is scored; there is no early stopping,
-so the test split is never used for training decisions.
+Model and training follow the configuration tuned in Putro et al. (2026,
+IEEE Access): AutoModelForSequenceClassification with its [CLS] classification
+head, learning rate 1e-5, batch 16, 50 warmup steps, cosine schedule, no weight
+decay, no label smoothing, 20 epochs. Batch 16 is reached by gradient
+accumulation (4 x 4 by default) so the full model fits on a shared GPU. Inputs
+follow the encoder-only format <s> <encoder-only> </s> code </s> with
+whitespace collapsed. The model of the last epoch is scored; unlike the earlier
+paper no epoch is picked on held-out data, so the test split is never used for
+training decisions.
 
 Usage:
     pip install torch transformers matplotlib codecarbon
-    python scripts/3_model_size.py                       # seeds 42 43 44, layers 12 10 8 6 4 3 2 1 0
+    python scripts/3_model_size.py --country JPN         # seeds 42 43 44, layers 12 10 8 6 4 3 2 1 0
     python scripts/3_model_size.py --no-codecarbon       # skip the energy measurement
     python scripts/3_model_size.py --allow-cpu           # train on the CPU when no GPU is found
-    python scripts/3_model_size.py --batch-size 4 --grad-accum 2   # same updates as batch 8, half the memory
+    python scripts/3_model_size.py --batch-size 2 --grad-accum 8   # still batch 16, less memory
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
 """
@@ -39,7 +43,10 @@ analysis = importlib.import_module("0_dataset_analysis")
 RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "representation",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
-                  "epochs", "lr", "batch_size", "grad_accum", "max_len"]
+                  "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps", "weight_decay", "max_len"]
+# A finished run is reused only when it was trained with the same settings
+CONFIG_COLUMNS = ["representation", "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler",
+                  "warmup_steps", "weight_decay", "max_len"]
 
 ACC_COLOR = "#2a78d6"
 F1_COLOR = "#eb6834"
@@ -76,8 +83,9 @@ def load_split(dataset_csv, data_dir, augmented=False):
 
 
 def load_model_and_tokenizer(model_name):
-    from transformers import AutoModel, AutoTokenizer
-    return AutoModel.from_pretrained(model_name), AutoTokenizer.from_pretrained(model_name)
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+    return model, AutoTokenizer.from_pretrained(model_name)
 
 
 def encode(tokenizer, code, max_len):
@@ -100,29 +108,21 @@ def batches(examples, batch_size, pad_id, shuffle, rng):
         yield ids, torch.tensor([label for _, label in chunk])
 
 
-def build_classifier(encoder, n_layers, pad_id, dropout=0.1):
-    import torch
+def build_classifier(model, n_layers, pad_id):
+    """Keep the bottom n_layers encoder blocks (0 = embeddings only) under the [CLS] head."""
     from torch import nn
 
-    # Keep the bottom n_layers transformer blocks; 0 leaves the embeddings only
+    encoder = model.base_model
     encoder.encoder.layer = encoder.encoder.layer[:n_layers]
     encoder.config.num_hidden_layers = n_layers
-    encoder.pooler = None
 
     class Classifier(nn.Module):
         def __init__(self):
             super().__init__()
-            self.encoder = encoder
-            self.dropout = nn.Dropout(dropout)
-            self.head = nn.Linear(encoder.config.hidden_size, 2)
-
-        def embed(self, ids):
-            mask = ids.ne(pad_id)
-            hidden = self.encoder(ids, attention_mask=mask)[0]
-            return (hidden * mask[:, :, None]).sum(1) / mask.sum(1, keepdim=True)
+            self.model = model
 
         def forward(self, ids):
-            return self.head(self.dropout(self.embed(ids)))
+            return self.model(input_ids=ids, attention_mask=ids.ne(pad_id)).logits
 
     return Classifier()
 
@@ -142,13 +142,13 @@ def scores(labels, preds):
 
 def run(seed, n_layers, args, load=load_model_and_tokenizer):
     import torch
-    from transformers import get_linear_schedule_with_warmup
+    from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"seed {seed}, {n_layers} layers: loading {args.model} (downloaded on first use)")
-    encoder, tokenizer = load(args.model)
-    model = build_classifier(encoder, n_layers, tokenizer.pad_token_id).to(device)
+    base, tokenizer = load(args.model)
+    model = build_classifier(base, n_layers, tokenizer.pad_token_id).to(device)
     gpu = f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else " (no GPU found, this will be slow)"
     log(f"seed {seed}, {n_layers} layers: training on {device.type}{gpu}")
 
@@ -161,7 +161,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     steps = args.epochs * math.ceil(math.ceil(len(train) / args.batch_size) / args.grad_accum)
-    scheduler = get_linear_schedule_with_warmup(optimizer, int(args.warmup * steps), steps)
+    schedule = get_cosine_schedule_with_warmup if args.scheduler == "cosine" else get_linear_schedule_with_warmup
+    scheduler = schedule(optimizer, args.warmup_steps, steps)
     loss_fn = torch.nn.CrossEntropyLoss()
     use_amp = device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
@@ -185,8 +186,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     model.train()
     for epoch in range(1, args.epochs + 1):
         losses = []
-        # The shuffle does not depend on the batch size, so batch 4 with 2 accumulation steps
-        # sees the same groups of 8 as batch 8 and makes the same updates with half the memory
+        # The shuffle does not depend on the batch size, so batch 4 with 4 accumulation steps
+        # sees the same groups of 16 as batch 16 and makes the same updates with less memory
         micro_batches = list(batches(train, args.batch_size, tokenizer.pad_token_id, True, rng))
         optimizer.zero_grad()
         for i, (ids, labels) in enumerate(micro_batches, start=1):
@@ -238,8 +239,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "energy_kwh": round(energy.energy_consumed, 6) if energy else "",
         "emissions_kg": round(energy.emissions, 6) if energy else "",
         "country": args.country if energy else "",
-        "epochs": args.epochs, "lr": args.lr, "batch_size": args.batch_size,
-        "grad_accum": args.grad_accum, "max_len": args.max_len,
+        **config_values(args),
     }
 
 
@@ -332,6 +332,16 @@ def plot(results, out):
     fig.savefig(out, dpi=300)
 
 
+def config_values(args):
+    return {"representation": args.representation, "head": "cls", "epochs": args.epochs, "lr": args.lr,
+            "batch_size": args.batch_size, "grad_accum": args.grad_accum, "scheduler": args.scheduler,
+            "warmup_steps": args.warmup_steps, "weight_decay": args.weight_decay, "max_len": args.max_len}
+
+
+def same_config(row, args):
+    return all(str(row.get(c, "")) == str(v) for c, v in config_values(args).items())
+
+
 def read_results(path):
     if not os.path.exists(path):
         return []
@@ -351,11 +361,12 @@ def main():
     parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--grad-accum", type=int, default=1,
-                        help="micro-batches per update; --batch-size 4 --grad-accum 2 updates like batch 8")
-    parser.add_argument("--weight-decay", type=float, default=0.01)
-    parser.add_argument("--warmup", type=float, default=0.1, help="share of steps with linear warmup")
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--grad-accum", type=int, default=4,
+                        help="micro-batches per update; the default 4 x 4 updates like batch 16")
+    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--scheduler", choices=["cosine", "linear"], default="cosine")
+    parser.add_argument("--warmup-steps", type=int, default=50)
     parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=True,
                         help="measure training energy and emissions with CodeCarbon (on by default)")
     parser.add_argument("--country", default="IDN",
@@ -387,11 +398,11 @@ def main():
                 writer.writeheader()
                 for r in previous:
                     writer.writerow({c: r.get(c, "1" if c == "grad_accum" else "") for c in RESULT_COLUMNS})
-        done = {(r["seed"], r["layers"], r["representation"]) for r in previous}
+        done = {(r["seed"], r["layers"]) for r in previous if same_config(r, args)}
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         for seed in args.seeds:
             for n_layers in args.layers:
-                if (str(seed), str(n_layers), args.representation) in done:
+                if (str(seed), str(n_layers)) in done:
                     log(f"[skip] seed {seed}, {n_layers} layers: already in {args.out}")
                     continue
                 result = run(seed, n_layers, args)
@@ -407,7 +418,7 @@ def main():
                 log(f"seed {seed}, {n_layers:>2} layers, {result['params_total'] / 1e6:6.1f}M params: "
                     f"acc {result['accuracy']:.3f}, F1 {result['f1']:.3f}, {result['train_seconds']}s")
 
-    results = [r for r in read_results(args.out) if r["representation"] == args.representation]
+    results = [r for r in read_results(args.out) if same_config(r, args)]
     if results:
         plot(results, args.figure)
         print(f"-> {args.out}, {args.figure}")

@@ -58,7 +58,7 @@ def normalize_whitespace(code):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--csv", default="switch_statements.csv")
-    parser.add_argument("--code-dir", default="1_rawmethod")
+    parser.add_argument("--code-dir", default="ds_comment/0")
     parser.add_argument("--model", default="microsoft/unixcoder-base")
     parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--keep-whitespace", action="store_true",

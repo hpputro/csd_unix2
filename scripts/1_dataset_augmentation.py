@@ -5,7 +5,9 @@ Reads the methods listed in switch_statements.csv from ds_comment/0 and writes
   - ds_comment/<k>/<project>/<file>: variant made by operator k (1-14)
   - ds_nocomment/<k>/<project>/<file>: that variant without comments
   - augmented_pool.csv: one row per method x operator with its status
-  - augmented_pool_summary.csv: status counts per operator
+  - augmented_pool_summary.csv: status counts per operator, all methods
+  - augmented_pool_summary_smell.csv: the same for the smelly methods used in
+    the experiment (fit UniXcoder's input, excluded projects left out)
 
 Operator numbers follow the toolkit order (a-n in demo_refactor_java.py).
 A variant is written only when its status is "ok": the operator changed the
@@ -18,19 +20,25 @@ Usage:
     pip install transformers nltk javalang
     pip install --use-pep517 wordninja
     python -m nltk.downloader wordnet
-    python scripts/augment.py
+    python scripts/1_dataset_augmentation.py
+    python scripts/1_dataset_augmentation.py --summary-only   # summaries from the existing pool
 """
 import argparse
 import contextlib
 import csv
+import importlib
 import io
 import os
 import random
 import sys
 import zlib
+from collections import Counter
 
-from count_tokens import SPECIAL_TOKENS, normalize_whitespace, strip_java_comments
-from pool_summary import save_and_print, summarize
+# The module name starts with a digit, so a plain import statement cannot load it
+analysis = importlib.import_module("0_dataset_analysis")
+SPECIAL_TOKENS = analysis.SPECIAL_TOKENS
+normalize_whitespace = analysis.normalize_whitespace
+strip_java_comments = analysis.strip_java_comments
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools", "java_refactor"))
@@ -42,6 +50,7 @@ OPERATORS = [
     "rename_local_variable", "rename_method_name", "return_optimal",
     "dead_branch_while", "dead_branch_for", "duplication",
 ]
+STATUSES = ["ok", "unchanged", "syntax", "over_budget", "error", "source_syntax"]
 
 
 def parses(code):
@@ -117,6 +126,31 @@ def build_pool(rows, comment_dir, nocomment_dir, operators, base_seed, count_tok
     return records
 
 
+def summarize(rows):
+    """Return one row per operator with its status counts, plus a total row."""
+    operators = sorted({(int(r["op_id"]), r["operator"]) for r in rows})
+    table = []
+    for op_id, name in operators:
+        counts = Counter(r["status"] for r in rows if int(r["op_id"]) == op_id)
+        table.append({"op_id": op_id, "operator": name, **{s: counts[s] for s in STATUSES},
+                      "total": sum(counts.values())})
+    totals = Counter(r["status"] for r in rows)
+    table.append({"op_id": "", "operator": "Total", **{s: totals[s] for s in STATUSES}, "total": len(rows)})
+    return table
+
+
+def save_and_print(table, out):
+    with open(out, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(table[0]))
+        writer.writeheader()
+        writer.writerows(table)
+    cols = STATUSES + ["total"]
+    print(f"{'op':>2} {'operator':22} " + " ".join(f"{c:>13}" for c in cols))
+    for t in table:
+        print(f"{t['op_id']:>2} {t['operator']:22} " + " ".join(f"{t[c]:>13}" for c in cols))
+    print(f"-> {out}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--csv", default="switch_statements.csv")
@@ -127,8 +161,31 @@ def main():
     parser.add_argument("--max-len", type=int, default=1024)
     parser.add_argument("--out", default="augmented_pool.csv")
     parser.add_argument("--summary", default="augmented_pool_summary.csv")
+    parser.add_argument("--summary-smell", default="augmented_pool_summary_smell.csv")
+    parser.add_argument("--tokens", default="token_counts.csv")
+    parser.add_argument("--fit-col", default="fits_with_comments")
+    parser.add_argument("--exclude-projects", nargs="*", default=["trove-2.1.0"])
+    parser.add_argument("--summary-only", action="store_true",
+                        help="rebuild the summaries from the existing pool without augmenting")
     args = parser.parse_args()
 
+    if args.summary_only:
+        with open(args.out, newline="", encoding="utf-8") as f:
+            records = list(csv.DictReader(f))
+    else:
+        records = augment(args)
+
+    print("All methods:")
+    save_and_print(summarize(records), args.summary)
+    with open(args.tokens, newline="", encoding="utf-8") as f:
+        fit = {r["sample_id"] for r in csv.DictReader(f) if r[args.fit_col] == "1"}
+    smelly = [r for r in records if str(r["label"]) == "1" and r["sample_id"] in fit
+              and r["project"] not in args.exclude_projects]
+    print(f"Smelly methods in the experiment ({len({r['sample_id'] for r in smelly})}):")
+    save_and_print(summarize(smelly), args.summary_smell)
+
+
+def augment(args):
     import refactoring_methods
     from transformers import AutoTokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model)
@@ -149,7 +206,7 @@ def main():
         writer.writerows(records)
 
     print(f"{len(rows)} methods x {len(operators)} operators -> {args.out}")
-    save_and_print(summarize(records), args.summary)
+    return records
 
 
 if __name__ == "__main__":

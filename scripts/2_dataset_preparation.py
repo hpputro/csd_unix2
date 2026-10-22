@@ -15,7 +15,7 @@ The test side holds original code only. A file is found at
 ds_comment/<is_augmented>/<filename> or ds_nocomment/<is_augmented>/<filename>.
 
 Usage:
-    python scripts/2_dataset_preparation.py                 # seeds 0-9 and 42 -> datasets/
+    python scripts/2_dataset_preparation.py                 # seeds 0-9, 42 and 43 -> datasets/
     python scripts/2_dataset_preparation.py --seeds 0 1 2
 """
 import argparse
@@ -165,7 +165,7 @@ def main():
     parser.add_argument("--code-dir", default="ds_comment/0")
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--exclude-projects", nargs="*", default=["trove-2.1.0"])
-    parser.add_argument("--seeds", type=int, nargs="*", default=list(range(10)) + [42])
+    parser.add_argument("--seeds", type=int, nargs="*", default=list(range(10)) + [42, 43])
     parser.add_argument("--test-frac", type=float, default=0.2)
     parser.add_argument("--clean-frac", type=float, default=0.25,
                         help="share of the clean train methods that get an extra sample")

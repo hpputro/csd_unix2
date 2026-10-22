@@ -16,6 +16,7 @@ so the test split is never used for training decisions.
 Usage:
     pip install torch transformers matplotlib codecarbon
     python scripts/3_model_size.py                       # seeds 42 43, layers 12 10 8 6 4 2 1 0
+    python scripts/3_model_size.py --no-codecarbon       # skip the energy measurement
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
 """
@@ -33,7 +34,7 @@ analysis = importlib.import_module("0_dataset_analysis")
 
 RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "representation",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
-                  "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg",
+                  "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
                   "epochs", "lr", "batch_size", "max_len"]
 
 ACC_COLOR = "#2a78d6"
@@ -154,8 +155,13 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
 
     tracker = None
     if args.codecarbon:
-        from codecarbon import EmissionsTracker
-        tracker = EmissionsTracker(log_level="error", save_to_file=False)
+        try:
+            from codecarbon import OfflineEmissionsTracker
+        except ImportError:
+            raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run with --no-codecarbon")
+        # Offline mode takes the grid carbon intensity of the given country instead of
+        # guessing the location from the IP address, so every machine reports the same way
+        tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False)
         tracker.start()
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
@@ -200,6 +206,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
         "energy_kwh": round(tracker.final_emissions_data.energy_consumed, 6) if tracker else "",
         "emissions_kg": round(emissions, 6) if emissions is not None else "",
+        "country": args.country if tracker else "",
         "epochs": args.epochs, "lr": args.lr, "batch_size": args.batch_size, "max_len": args.max_len,
     }
 
@@ -285,7 +292,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup", type=float, default=0.1, help="share of steps with linear warmup")
-    parser.add_argument("--codecarbon", action="store_true", help="measure energy with CodeCarbon")
+    parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=True,
+                        help="measure training energy and emissions with CodeCarbon (on by default)")
+    parser.add_argument("--country", default="IDN",
+                        help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/model_size.csv")
     parser.add_argument("--figure", default="figures/model_size.png")
     parser.add_argument("--plot-only", action="store_true")

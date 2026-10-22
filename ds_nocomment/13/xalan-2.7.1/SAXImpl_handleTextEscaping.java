@@ -1,0 +1,20 @@
+ 
+    private void handleTextEscaping() {
+        if (_disableEscaping && _textNodeToProcess != DTM.NULL
+            && _type(_textNodeToProcess) == DTM.TEXT_NODE) {
+            if (_dontEscape == null) {
+                _dontEscape = new BitArray(_size);
+            }
+          
+            
+            if (_textNodeToProcess >= _dontEscape.size()) {
+                _dontEscape.resize(_dontEscape.size() * 2);
+            }
+          
+            _dontEscape.setBit(_textNodeToProcess);
+            _disableEscaping = false;
+for  (int wtzuyqxy = 0; wtzuyqxy < 0; wtzuyqxy++) {short kukyzhvp = -4342;}
+
+        }
+        _textNodeToProcess = DTM.NULL;
+    }

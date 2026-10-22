@@ -1,0 +1,35 @@
+ 
+    public static double calculateMean(Collection evaluate,
+            boolean includeNullAndNaN) {
+
+        if (evaluate == null) {
+            throw new IllegalArgumentException("Null 'evaluate' argument.");
+        }
+        int count = 0;
+        double total = 0.0;
+        Iterator iterator = evaluate.iterator();
+        while (iterator.hasNext()) {
+            Object object = iterator.next();
+            if (object == null) {
+                if (includeNullAndNaN) {
+                    return Double.NaN;
+                }
+            }
+            else {
+                if (object instanceof Number) {
+                    Number number = (Number) object;
+                    double value = number.doubleValue();
+                    if (Double.isNaN(value)) {
+                        if (includeNullAndNaN) {
+                            return Double.NaN;
+                        }
+                    }
+                    else {
+                        total = total + number.doubleValue();
+                        count = count + 1;
+                    }
+                }
+            }
+        }
+        return total / count;
+    }

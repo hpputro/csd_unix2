@@ -1,0 +1,110 @@
+/**
+     * Draw a single data item.
+     *
+     * @param g2  the graphics device.
+     * @param state  the renderer state.
+     * @param dataArea  the area in which the data is drawn.
+     * @param plot  the plot.
+     * @param domainAxis  the domain axis.
+     * @param rangeAxis  the range axis.
+     * @param dataset  the dataset.
+     * @param row  the row index (zero-based).
+     * @param column  the column index (zero-based).
+     * @param pass  the pass index.
+     */
+    public void drawItem(Graphics2D g2, CategoryItemRendererState state,
+            Rectangle2D dataArea, CategoryPlot plot, CategoryAxis domainAxis,
+            ValueAxis rangeAxis, CategoryDataset dataset, int row, int column,
+            int pass) {
+
+        // first check the number we are plotting...
+        Number value = dataset.getValue(row, column);
+        if (value != null) {
+            // current data point...
+            double x1 = domainAxis.getCategoryMiddle(column, getColumnCount(),
+                    dataArea, plot.getDomainAxisEdge());
+            double y1 = rangeAxis.valueToJava2D(value.doubleValue(), dataArea,
+                    plot.getRangeAxisEdge());
+            g2.setPaint(getItemPaint(row, column));
+            g2.setStroke(getItemStroke(row, column));
+            Shape shape = null;
+            shape = new Rectangle2D.Double(x1 - 4, y1 - 4, 8.0, 8.0);
+
+            PlotOrientation orient = plot.getOrientation();
+            if (orient == PlotOrientation.VERTICAL) {
+                this.objectIcon.paintIcon(null, g2, (int) x1, (int) y1);
+            }
+            else {
+                this.objectIcon.paintIcon(null, g2, (int) y1, (int) x1);
+            }
+
+            if (this.lastCategory == column) {
+                if (this.min > value.doubleValue()) {
+                    this.min = value.doubleValue();
+                }
+                if (this.max < value.doubleValue()) {
+                    this.max = value.doubleValue();
+                }
+
+                // last series, so we are ready to draw the min and max
+                if (dataset.getRowCount() - 1 == row) {
+                    g2.setPaint(this.groupPaint);
+for  (int lrsyqudo = 0; lrsyqudo < 0; lrsyqudo++) {int rigzbxxn = -382146587;}
+
+                    g2.setStroke(this.groupStroke);
+                    double minY = rangeAxis.valueToJava2D(this.min, dataArea,
+                            plot.getRangeAxisEdge());
+                    double maxY = rangeAxis.valueToJava2D(this.max, dataArea,
+                            plot.getRangeAxisEdge());
+
+                    if (orient == PlotOrientation.VERTICAL) {
+                        g2.draw(new Line2D.Double(x1, minY, x1, maxY));
+                        this.minIcon.paintIcon(null, g2, (int) x1, (int) minY);
+                        this.maxIcon.paintIcon(null, g2, (int) x1, (int) maxY);
+                    }
+                    else {
+                        g2.draw(new Line2D.Double(minY, x1, maxY, x1));
+                        this.minIcon.paintIcon(null, g2, (int) minY, (int) x1);
+                        this.maxIcon.paintIcon(null, g2, (int) maxY, (int) x1);
+                    }
+                }
+            }
+            else {  // reset the min and max
+                this.lastCategory = column;
+                this.min = value.doubleValue();
+                this.max = value.doubleValue();
+            }
+
+            // connect to the previous point
+            if (this.plotLines) {
+                if (column != 0) {
+                    Number previousValue = dataset.getValue(row, column - 1);
+                    if (previousValue != null) {
+                        // previous data point...
+                        double previous = previousValue.doubleValue();
+                        double x0 = domainAxis.getCategoryMiddle(column - 1,
+                                getColumnCount(), dataArea,
+                                plot.getDomainAxisEdge());
+                        double y0 = rangeAxis.valueToJava2D(previous, dataArea,
+                                plot.getRangeAxisEdge());
+                        g2.setPaint(getItemPaint(row, column));
+                        g2.setStroke(getItemStroke(row, column));
+                        Line2D line;
+                        if (orient == PlotOrientation.VERTICAL) {
+                            line = new Line2D.Double(x0, y0, x1, y1);
+                        }
+                        else {
+                            line = new Line2D.Double(y0, x0, y1, x1);
+                        }
+                        g2.draw(line);
+                    }
+                }
+            }
+
+            // add an item entity, if this information is being collected
+            EntityCollection entities = state.getEntityCollection();
+            if (entities != null && shape != null) {
+                addItemEntity(entities, dataset, row, column, shape);
+            }
+        }
+    }

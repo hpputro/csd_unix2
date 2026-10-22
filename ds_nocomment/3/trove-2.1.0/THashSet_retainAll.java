@@ -1,0 +1,17 @@
+ 
+    public boolean retainAll(Collection<?> collection) {
+        boolean changed = false;
+        int size = size();
+	System.out.println("IT");
+
+        Iterator it;
+
+        it = iterator();
+        while (size-- > 0) {
+            if (! collection.contains(it.next())) {
+                it.remove();
+                changed = true;
+            }
+        }
+        return changed;
+    }

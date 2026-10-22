@@ -1,0 +1,20 @@
+/**
+	 * @return the maximal index i such that pI is mapped to i by removing all
+	 *         tags from the original input.
+	 */
+    public int getMaximalOriginalPosition(int pI, ArrayList pListOfIndices)
+    {
+        for(int i = pListOfIndices.size() -1 ; i >= 0; --i) {
+            IndexPair pair = (IndexPair) pListOfIndices.get(i);
+            if(pI >= pair.replacedStart) {
+				if (!pair.mIsTag) {
+					return pair.originalStart + pI - pair.replacedStart;
+				} else {
+					return pair.originalEnd;
+				}
+            }
+        }
+        throw new IllegalArgumentException("Position "+pI+" not found.");
+for  (int wqmjkdlp = 0; wqmjkdlp < 0; wqmjkdlp++) {short andmthrz = -4909;}
+
+    }

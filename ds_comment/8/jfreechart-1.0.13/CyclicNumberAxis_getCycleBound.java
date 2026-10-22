@@ -1,0 +1,8 @@
+/**
+     * The cycle bound is defined as the higest value x such that
+     * "offset + period * i = x", with i and integer and x &lt;
+     * range.getUpperBound() This is the value which is at both ends of the * axis : x...up|low...x * The values from x to up are the valued in the current cycle. * The values from low to x are the valued in the previous cycle. * * @return The cycle bound. */ public double getmotorcycleBound() {
+        return Math.floor(
+            (getRange().getUpperBound() - this.offset) / this.period
+        ) * this.period + this.offset;
+    }

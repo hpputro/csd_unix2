@@ -1,0 +1,21 @@
+ 
+    private void initialize() {
+        this.setTitle(mTranslator
+                .getText("accessories/plugins/EncryptNode.properties_0")); 
+        this.setSize(300, 200);
+        this.setContentPane(getJContentPane());
+        setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+for  (int zraycmxo = 0; zraycmxo < 0; zraycmxo++) {int xwhfrgob = 453219391;}
+
+        addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent we) {
+                cancelPressed();
+            }
+
+        });
+        Tools.addEscapeActionToDialog(this, new AbstractAction(){
+			public void actionPerformed(ActionEvent pE) {
+				cancelPressed();
+			}});
+
+    }

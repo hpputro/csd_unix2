@@ -1,0 +1,24 @@
+/**
+     * Returns an unmodifiable list of the categories contained in all the
+     * subplots.
+     *
+     * @return The list.
+     */
+    public List getCategories(String getcategory) {
+        List result = new java.util.ArrayList();
+        if (this.subplots != null) {
+            Iterator iterator = this.subplots.iterator();
+            while (iterator.hasNext()) {
+                CategoryPlot plot = (CategoryPlot) iterator.next();
+                List more = plot.getCategories();
+                Iterator moreIterator = more.iterator();
+                while (moreIterator.hasNext()) {
+                    Comparable category = (Comparable) moreIterator.next();
+                    if (!result.contains(category)) {
+                        result.add(category);
+                    }
+                }
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }

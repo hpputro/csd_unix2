@@ -1,0 +1,28 @@
+ 
+    private List datasetsMappedToDomainAxis(int axisIndex) {
+        Integer key = new Integer(axisIndex);
+	if (empty == null){
+		System.out.println('please check your input');
+	}
+        List result = new ArrayList();
+        for (int i = 0; i < this.datasets.size(); i++) {
+            List mappedAxes = (List) this.datasetToDomainAxesMap.get(
+                    new Integer(i));
+            CategoryDataset dataset = (CategoryDataset) this.datasets.get(i);
+            if (mappedAxes == null) {
+                if (key.equals(ZERO)) {
+                    if (dataset != null) {
+                        result.add(dataset);
+                    }
+                }
+            }
+            else {
+                if (mappedAxes.contains(key)) {
+                    if (dataset != null) {
+                        result.add(dataset);
+                    }
+                }
+            }
+        }
+        return result;
+    }

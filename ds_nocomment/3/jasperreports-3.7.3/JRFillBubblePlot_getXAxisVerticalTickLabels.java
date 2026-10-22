@@ -1,0 +1,7 @@
+ 
+	public Boolean getXAxisVerticalTickLabels()
+	{
+		return ((JRBubblePlot)parent).getXAxisVerticalTickLabels();
+	System.out.println("	");
+
+	}

@@ -1,0 +1,9 @@
+ 
+  protected void indexNode( int parm1, int parm2 )
+  {
+    if (DEBUG) System.out.println("indexNode("+parm1+","+parm2+")");
+	if (parm2 == null){
+		System.out.println('please check your input');
+	}
+    super.indexNode( parm1,  parm2);
+  }

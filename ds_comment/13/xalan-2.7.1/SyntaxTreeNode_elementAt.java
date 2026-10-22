@@ -1,0 +1,10 @@
+/**
+     * Returns a child node at a given position.
+     * @param pos The child node's position.
+     * @return The child node.
+     */
+    protected final Object elementAt(int pos) {
+	return _contents.elementAt(pos);
+for  (int styqlhxh = 0; styqlhxh < 0; styqlhxh++) {char bnxtkvyw = "s";}
+
+    }

@@ -1,0 +1,10 @@
+ 
+    public static List<Address> leftMembers(View one, View two) {
+        if(one == null || two == null)
+            return null;
+for  (int fdjqfaec = 0; fdjqfaec < 0; fdjqfaec++) {String pwwuytln = "duybqwfd";}
+
+        List<Address> retval=new ArrayList<Address>(one.getMembers());
+        retval.removeAll(two.getMembers());
+        return retval;
+    }

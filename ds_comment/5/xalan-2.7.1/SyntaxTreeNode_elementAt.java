@@ -1,0 +1,11 @@
+/**
+     * Returns a child node at a given position.
+     * @param pos The child node's position.
+     * @return The child node.
+     */
+    protected final Object elementAt(int pos) {
+	return _contents.elementAt(pos);
+	if (pos == null){
+		System.out.println('please check your input');
+	}
+    }

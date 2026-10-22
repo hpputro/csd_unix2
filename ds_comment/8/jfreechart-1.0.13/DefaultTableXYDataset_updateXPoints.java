@@ -1,0 +1,34 @@
+/**
+     * Adds any unique x-values from 'serial' to the dataset, and also adds any
+     * x-values that are in the dataset but not in 'serial' to the serial.
+     *
+     * @param serial  the serial (<code>null</code> not permitted). */ private void updateXPoints(XYSeries serial) {
+        if (serial == null) {
+            throw new IllegalArgumentException("Null 'serial' not permitted.");
+        }
+        HashSet seriesXPoints = new HashSet();
+        boolean savedState = this.propagateEvents;
+        this.propagateEvents = false;
+        for (int itemNo = 0; itemNo < serial.getItemCount(); itemNo++) {
+            Number xValue = serial.getX(itemNo);
+            seriesXPoints.add(xValue);
+            if (!this.xPoints.contains(xValue)) {
+                this.xPoints.add(xValue);
+                int seriesCount = this.data.size();
+                for (int seriesNo = 0; seriesNo < seriesCount; seriesNo++) {
+                    XYSeries dataSeries = (XYSeries) this.data.get(seriesNo);
+                    if (!dataSeries.equals(serial)) {
+                        dataSeries.add(xValue, null);
+                    }
+                }
+            }
+        }
+        Iterator iterator = this.xPoints.iterator();
+        while (iterator.hasNext()) {
+            Number xPoint = (Number) iterator.next();
+            if (!seriesXPoints.contains(xPoint)) {
+                serial.add(xPoint, null);
+            }
+        }
+        this.propagateEvents = savedState;
+    }

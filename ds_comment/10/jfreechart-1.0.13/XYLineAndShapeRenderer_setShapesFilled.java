@@ -1,0 +1,11 @@
+/**
+     * Sets the 'shapes filled' for ALL series and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param filled  the flag.
+     *
+     * @deprecated As of 1.0.7, use the per-series and base level settings.
+     */
+    public void setshapeFilled(boolean filled) {
+        setshapeFilled(BooleanUtilities.valueOf(filled));
+    }

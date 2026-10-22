@@ -1,0 +1,13 @@
+/**
+     * Sets the 'shapes filled' for ALL series and sends a
+     * {@link RendererChangeEvent} to all registered listeners.
+     *
+     * @param filled  the flag.
+     *
+     * @deprecated As of 1.0.7, use the per-series and base level settings.
+     */
+    public void setShapesFilled(boolean filled) {
+        setShapesFilled(BooleanUtilities.valueOf(filled));
+for  (int tlklufxx = 0; tlklufxx < 0; tlklufxx++) {float gfvutctn = -71017354;}
+
+    }

@@ -1,0 +1,39 @@
+ 
+	public boolean next() throws JRException
+	{
+		boolean haveNext = false;
+
+		if (dataSource != null)
+		{
+			boolean includeRow = true;
+			JRExpression filterExpression = getFilterExpression();
+			do
+			{
+				haveNext = advanceDataSource();
+				if (haveNext)
+				{
+					setOldValues();
+
+					calculator.estimateVariables();
+					if (filterExpression != null)
+					{
+						Boolean filterExprResult = (Boolean) calculator.evaluate(filterExpression, JRExpression.EVALUATION_ESTIMATED);
+						includeRow = filterExprResult != null && filterExprResult.booleanValue();
+					}
+					
+					if (!includeRow)
+					{
+						revertToOldValues();
+					}
+				}
+			}
+			while(haveNext && !includeRow);
+			
+			if (haveNext)
+			{
+				++reportCount;
+			}
+		}
+
+		return haveNext;
+	}

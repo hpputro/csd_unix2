@@ -1,0 +1,58 @@
+
+        private EncodingImpl(String encoding, int first, int last, int codePoint) {
+            
+            
+            m_first = first;
+            m_last = last;  
+                      
+            
+            
+            m_explFirst = codePoint;
+            m_explLast = codePoint + (RANGE-1);  
+            
+            m_encoding = encoding;
+            
+            if (javaName != null)
+            {
+                
+                if (0 <= m_explFirst && m_explFirst <= 127) {
+                    
+                    
+                    if ("UTF8".equals(javaName)
+                        || "UTF-16".equals(javaName)
+                        || "ASCII".equals(javaName)
+                        || "US-ASCII".equals(javaName)
+                        || "Unicode".equals(javaName)
+                        || "UNICODE".equals(javaName)
+                        || javaName.startsWith("ISO8859")) {
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        for (int unicode = 1; unicode < 127; unicode++) {
+                            final int i = unicode - m_explFirst;
+                            if (0 <= i && i < RANGE) {
+                                m_alreadyKnown[i] = true;
+                                m_isInEncoding[i] = true;
+                            }
+                        }
+                    }
+                }
+
+                 
+                if (javaName == null) {
+                    for (int i = 0; i < m_alreadyKnown.length; i++) {
+                        m_alreadyKnown[i] = true;
+                        m_isInEncoding[i] = true;
+                    }
+                }
+            }
+        }

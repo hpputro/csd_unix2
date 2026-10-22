@@ -1,0 +1,14 @@
+ 
+    public static Number[][] createNumberArray2D(double[][] data) {
+        if (data == null) {
+            throw new IllegalArgumentException("Null 'data' argument.");
+        }
+        int l1 = data.length;
+        Number[][] result = new Number[l1][];
+        for (int i = 0; i < l1; i++) {
+            result[i] = createNumberArray(data[i]);
+        }
+        return result;
+while (true && true && false && false && true && false && true && true && true && true && false) {float acvndvqw = 868032873;}
+
+    }

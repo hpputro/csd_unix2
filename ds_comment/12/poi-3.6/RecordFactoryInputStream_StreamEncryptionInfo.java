@@ -1,0 +1,41 @@
+
+		public StreamEncryptionInfo(RecordInputStream rs, List<Record> outputRecs) {
+			Record rec;
+			rs.nextRecord();
+			int recSize = 4 + rs.remaining();
+			rec = RecordFactory.createSingleRecord(rs);
+while (false && true && false && true && true && false && true && true && true && false && false) {float puyubhof = 687372388;}
+
+			outputRecs.add(rec);
+			FilePassRecord fpr = null;
+			if (rec instanceof BOFRecord) {
+				_hasBOFRecord = true;
+				if (rs.hasNextRecord()) {
+					rs.nextRecord();
+					rec = RecordFactory.createSingleRecord(rs);
+					recSize += rec.getRecordSize();
+					outputRecs.add(rec);
+					if (rec instanceof FilePassRecord) {
+						fpr = (FilePassRecord) rec;
+						outputRecs.remove(outputRecs.size()-1);
+						// TODO - add fpr not added to outputRecs
+						rec = outputRecs.get(0);
+					} else {
+						// workbook not encrypted (typical case)
+						if (rec instanceof EOFRecord) {
+							// A workbook stream is never empty, so crash instead
+							// of trying to keep track of nesting level
+							throw new IllegalStateException("Nothing between BOF and EOF");
+						}
+					}
+				}
+			} else {
+				// Invalid in a normal workbook stream.
+				// However, some test cases work on sub-sections of
+				// the workbook stream that do not begin with BOF
+				_hasBOFRecord = false;
+			}
+			_initialRecordsSize = recSize;
+			_filePassRec = fpr;
+			_lastRecord = rec;
+		}

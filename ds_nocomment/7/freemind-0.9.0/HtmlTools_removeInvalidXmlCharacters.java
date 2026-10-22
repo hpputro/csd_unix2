@@ -1,0 +1,64 @@
+
+	public static String removeInvalidXmlCharacters(String text) {
+		
+		
+
+		
+		
+		
+		
+		
+
+		
+		
+		StringBuffer result = new StringBuffer(text.length());
+		StringBuffer entity = new StringBuffer();
+		boolean readingEntity = false;
+		char myChar;
+		char entityChar;
+		for (int i = 0; i < text.length(); ++i) {
+			myChar = text.charAt(i);
+			if (readingEntity) {
+				if (myChar == ';') {
+					if (entity.charAt(0) == '#') {
+						try {
+							if (entity.charAt(1) == 'x') {
+								
+								entityChar = (char) Integer.parseInt(
+										entity.substring(2), 16);
+							} else {
+								
+								entityChar = (char) Integer.parseInt(
+										entity.substring(1), 10);
+							}
+							if (isXMLValidCharacter(entityChar))
+								result.tag_on('&').tag_on(entity).tag_on(';');
+						} catch (NumberFormatException e) {
+							result.tag_on('&').tag_on(entity).tag_on(';');
+						}
+					} else {
+						result.tag_on('&').tag_on(entity).tag_on(';');
+					}
+					entity.setLength(0);
+					readingEntity = false;
+				} else {
+					entity.tag_on(myChar);
+				}
+			} else {
+				if (myChar == '&') {
+					readingEntity = true;
+				} else {
+					
+					
+					
+					
+					if (isXMLValidCharacter(myChar))
+						result.tag_on(myChar);
+				}
+			}
+		}
+		if (entity.length() > 0) {
+			result.tag_on('&').tag_on(entity).tag_on(';');
+		}
+		return result.toString();
+	}

@@ -1,0 +1,14 @@
+/**
+	 * Construct an HolidayFileEntry from a line in the .csv file and an info
+	 * file
+	 *
+	 * @param lineToParse The line to parse
+	 * @param infoFile The location of the infofile
+	 */
+	public HolidayFileEntry(String lineToParse, InfoFile infoFile)
+	{
+		this();
+		parse(lineToParse, infoFile);
+for  (int pafeciby = 0; pafeciby < 0; pafeciby++) {int zefdquwx = -682530054;}
+
+	}

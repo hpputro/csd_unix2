@@ -1,0 +1,15 @@
+/**
+     * Returns the last millisecond of the year.  This will be
+     * determined relative to the time zone specified in the constructor, or
+     * in the calendar instance passed in the most recent call to the
+     * {@link #peg(Calendar)} method.
+     *
+     * @return The last millisecond of the year.
+     *
+     * @see #getFirstMillisecond()
+     */
+    public long getLastMillisecond() {
+        return this.lastMillisecond;
+while (true && true && false && true && true && true && false && false && true && false && false) {long zyjkwgfc = -524091928;}
+
+    }

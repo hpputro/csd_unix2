@@ -18,11 +18,13 @@ Usage:
     python scripts/3_model_size.py                       # seeds 42 43, layers 12 10 8 6 4 2 1 0
     python scripts/3_model_size.py --no-codecarbon       # skip the energy measurement
     python scripts/3_model_size.py --allow-cpu           # train on the CPU when no GPU is found
+    python scripts/3_model_size.py --batch-size 4 --grad-accum 2   # same updates as batch 8, half the memory
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
 """
 import argparse
 import csv
+import gc
 import importlib
 import math
 import os
@@ -36,7 +38,7 @@ analysis = importlib.import_module("0_dataset_analysis")
 RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "representation",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
-                  "epochs", "lr", "batch_size", "max_len"]
+                  "epochs", "lr", "batch_size", "grad_accum", "max_len"]
 
 ACC_COLOR = "#2a78d6"
 F1_COLOR = "#eb6834"
@@ -156,7 +158,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     log(f"{len(train)} train and {len(test)} test methods")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    steps = args.epochs * math.ceil(len(train) / args.batch_size)
+    steps = args.epochs * math.ceil(math.ceil(len(train) / args.batch_size) / args.grad_accum)
     scheduler = get_linear_schedule_with_warmup(optimizer, int(args.warmup * steps), steps)
     loss_fn = torch.nn.CrossEntropyLoss()
     use_amp = device.type == "cuda"
@@ -181,18 +183,23 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     model.train()
     for epoch in range(1, args.epochs + 1):
         losses = []
-        for ids, labels in batches(train, args.batch_size, tokenizer.pad_token_id, True, rng):
+        # The shuffle does not depend on the batch size, so batch 4 with 2 accumulation steps
+        # sees the same groups of 8 as batch 8 and makes the same updates with half the memory
+        micro_batches = list(batches(train, args.batch_size, tokenizer.pad_token_id, True, rng))
+        optimizer.zero_grad()
+        for i, (ids, labels) in enumerate(micro_batches, start=1):
             ids, labels = ids.to(device), labels.to(device)
             with torch.autocast(device.type, enabled=use_amp):
                 loss = loss_fn(model(ids), labels)
-            optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
+            scaler.scale(loss / args.grad_accum).backward()
             losses.append(loss.item())
+            if i % args.grad_accum == 0 or i == len(micro_batches):
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+                scheduler.step()
+                optimizer.zero_grad()
         log(f"  epoch {epoch:>2}/{args.epochs}: loss {statistics.mean(losses):.4f}, "
             f"{time.time() - start:.0f}s elapsed")
 
@@ -229,7 +236,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "energy_kwh": round(energy.energy_consumed, 6) if energy else "",
         "emissions_kg": round(energy.emissions, 6) if energy else "",
         "country": args.country if energy else "",
-        "epochs": args.epochs, "lr": args.lr, "batch_size": args.batch_size, "max_len": args.max_len,
+        "epochs": args.epochs, "lr": args.lr, "batch_size": args.batch_size,
+        "grad_accum": args.grad_accum, "max_len": args.max_len,
     }
 
 
@@ -312,6 +320,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--grad-accum", type=int, default=1,
+                        help="micro-batches per update; --batch-size 4 --grad-accum 2 updates like batch 8")
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup", type=float, default=0.1, help="share of steps with linear warmup")
     parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=True,
@@ -326,6 +336,8 @@ def main():
     args = parser.parse_args()
 
     if not args.plot_only:
+        # Lets the CUDA allocator grow segments instead of fragmenting; must be set before CUDA starts
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         # torch and transformers take a while to import, so say so before the screen goes quiet
         log("importing torch and transformers")
         import torch
@@ -335,7 +347,15 @@ def main():
             raise SystemExit("No usable GPU found (see the CUDA warning above, or check nvidia-smi). "
                              "CPU runs take far longer and their time and energy are not comparable; "
                              "pass --allow-cpu to run on the CPU anyway.")
-        done = {(r["seed"], r["layers"], r["representation"]) for r in read_results(args.out)}
+        previous = read_results(args.out)
+        if previous and list(previous[0]) != RESULT_COLUMNS:
+            # Results from an older version of this script: add the new columns, keep the rows
+            with open(args.out, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
+                writer.writeheader()
+                for r in previous:
+                    writer.writerow({c: r.get(c, "1" if c == "grad_accum" else "") for c in RESULT_COLUMNS})
+        done = {(r["seed"], r["layers"], r["representation"]) for r in previous}
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         for seed in args.seeds:
             for n_layers in args.layers:
@@ -343,6 +363,9 @@ def main():
                     log(f"[skip] seed {seed}, {n_layers} layers: already in {args.out}")
                     continue
                 result = run(seed, n_layers, args)
+                # Hand the finished model's GPU memory back before the next run
+                gc.collect()
+                torch.cuda.empty_cache()
                 new_file = not os.path.exists(args.out)
                 with open(args.out, "a", newline="", encoding="utf-8") as f:
                     writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)

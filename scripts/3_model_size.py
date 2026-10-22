@@ -17,6 +17,7 @@ Usage:
     pip install torch transformers matplotlib codecarbon
     python scripts/3_model_size.py                       # seeds 42 43, layers 12 10 8 6 4 2 1 0
     python scripts/3_model_size.py --no-codecarbon       # skip the energy measurement
+    python scripts/3_model_size.py --allow-cpu           # train on the CPU when no GPU is found
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
 """
@@ -319,15 +320,21 @@ def main():
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/model_size.csv")
     parser.add_argument("--figure", default="figures/model_size.png")
+    parser.add_argument("--allow-cpu", action="store_true",
+                        help="train on the CPU when no GPU is found instead of stopping")
     parser.add_argument("--plot-only", action="store_true")
     args = parser.parse_args()
 
     if not args.plot_only:
         # torch and transformers take a while to import, so say so before the screen goes quiet
         log("importing torch and transformers")
-        import torch  # noqa: F401
+        import torch
         import transformers  # noqa: F401
         log("imports done")
+        if not torch.cuda.is_available() and not args.allow_cpu:
+            raise SystemExit("No usable GPU found (see the CUDA warning above, or check nvidia-smi). "
+                             "CPU runs take far longer and their time and energy are not comparable; "
+                             "pass --allow-cpu to run on the CPU anyway.")
         done = {(r["seed"], r["layers"], r["representation"]) for r in read_results(args.out)}
         os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
         for seed in args.seeds:

@@ -1,0 +1,16 @@
+op_id,operator,ok,unchanged,syntax,over_budget,error,source_syntax,total
+1,add_argumemts,284,0,96,23,0,1,404
+2,add_local_variable,177,172,22,33,0,0,404
+3,add_print,335,0,27,35,6,1,404
+4,apply_plus_zero_math,93,264,14,29,4,0,404
+5,enhance_filed,239,113,20,32,0,0,404
+6,enhance_for_loop,1,401,2,0,0,0,404
+7,rename_api,277,89,6,32,0,0,404
+8,rename_argument,231,137,5,31,0,0,404
+9,rename_local_variable,171,203,4,26,0,0,404
+10,rename_method_name,359,1,6,37,0,1,404
+11,return_optimal,99,199,98,8,0,0,404
+12,dead_branch_while,339,0,29,32,3,1,404
+13,dead_branch_for,335,0,30,35,3,1,404
+14,duplication,188,171,14,31,0,0,404
+,Total,3128,1750,373,384,16,5,5656

@@ -4,7 +4,8 @@ For every seed and layer count, fine-tunes UniXcoder keeping only the bottom
 k encoder layers (0 = embeddings only) on the unbalanced train split of
 datasets/dataset_seed<seed>.csv and scores it on the test split. Each run
 appends one row to results/model_size.csv (finished runs are skipped on a
-rerun); the figure plots accuracy and F1 against the parameter count.
+rerun); the figure plots accuracy, F1 and fine-tuning time against the
+parameter count, from the full model on the left to the smallest on the right.
 
 The classifier mean-pools UniXcoder's token embeddings, as UniXcoder's own
 fine-tuning scripts do, and feeds them to a linear head. Inputs follow the
@@ -32,7 +33,7 @@ analysis = importlib.import_module("0_dataset_analysis")
 
 RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "representation",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
-                  "train_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg",
+                  "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg",
                   "epochs", "lr", "batch_size", "max_len"]
 
 ACC_COLOR = "#2a78d6"
@@ -178,6 +179,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     emissions = tracker.stop() if tracker else None
 
     model.eval()
+    start = time.time()
     preds, labels = [], []
     with torch.no_grad():
         for ids, batch_labels in batches(test, args.batch_size, tokenizer.pad_token_id, False, rng):
@@ -185,6 +187,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
                 logits = model(ids.to(device))
             preds += logits.argmax(-1).tolist()
             labels += batch_labels.tolist()
+    test_seconds = time.time() - start
 
     return {
         "seed": seed, "layers": n_layers,
@@ -193,6 +196,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "representation": args.representation,
         **{k: round(v, 4) if isinstance(v, float) else v for k, v in scores(labels, preds).items()},
         "train_seconds": round(train_seconds, 1),
+        "test_seconds": round(test_seconds, 2),
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
         "energy_kwh": round(tracker.final_emissions_data.energy_consumed, 6) if tracker else "",
         "emissions_kg": round(emissions, 6) if emissions is not None else "",
@@ -207,7 +211,8 @@ def plot(results, out):
 
     # DejaVu Sans ships with matplotlib, so the figure is the same on every machine
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    fig, (ax, ax_time) = plt.subplots(2, 1, figsize=(7, 6.2), sharex=True,
+                                      gridspec_kw={"height_ratios": [1.6, 1]})
 
     by_layers = {}
     for r in results:
@@ -216,30 +221,43 @@ def plot(results, out):
     params = [int(by_layers[k][0]["params_total"]) / 1e6 for k in layers]
     seeds = sorted({r["seed"] for r in results})
 
-    for metric, color, name in [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]:
-        means = [statistics.mean(float(r[metric]) for r in by_layers[k]) for k in layers]
+    def draw(axis, metric, color, scale=1.0):
+        means = [statistics.mean(float(r[metric]) * scale for r in by_layers[k]) for k in layers]
         for k, x in zip(layers, params):
-            ys = [float(r[metric]) for r in by_layers[k]]
-            ax.scatter([x] * len(ys), ys, s=14, color=color, alpha=0.35, edgecolors="none", zorder=2)
-        ax.plot(params, means, color=color, linewidth=2, marker="o", markersize=6, label=name, zorder=3)
-        ax.text(params[-1] + 1.5, means[-1], name, color=INK, fontsize=9, va="center")
+            ys = [float(r[metric]) * scale for r in by_layers[k]]
+            axis.scatter([x] * len(ys), ys, s=14, color=color, alpha=0.35, edgecolors="none", zorder=2)
+        axis.plot(params, means, color=color, linewidth=2, marker="o", markersize=6, zorder=3)
+        return means
 
-    ax.set_xlabel("Parameters (millions)", color=MUTED)
+    # (a) scores; the x axis runs from the full model on the left to the smallest on the right
+    for metric, color, name in [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]:
+        means = draw(ax, metric, color)
+        ax.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
+        ax.text(params[0] - 1.5, means[0], name, color=INK, fontsize=9, va="center")
     ax.set_ylabel("Score on the test split", color=MUTED)
-    ax.set_xlim(min(params) - 4, max(params) + 14)
+    ax.set_title(f"(a) Accuracy and F1-score (mean of seeds {', '.join(map(str, seeds))}; dots = single seeds)",
+                 loc="left", fontsize=10, color=INK, pad=10)
+    ax.legend(frameon=False, loc="lower left", fontsize=9)
+
+    # (b) fine-tuning time
+    draw(ax_time, "train_seconds", INK, scale=1 / 60)
+    ax_time.set_ylabel("Minutes", color=MUTED)
+    ax_time.set_ylim(bottom=0)
+    ax_time.set_title("(b) Fine-tuning time", loc="left", fontsize=10, color=INK)
+    ax_time.set_xlabel("Parameters (millions)", color=MUTED)
+
+    ax.set_xlim(max(params) + 4, min(params) - 14)
     top = ax.secondary_xaxis("top")
     top.set_xticks(params, [f"{k}L" for k in layers])
     top.tick_params(colors=MUTED, labelsize=8, length=0)
     top.spines["top"].set_visible(False)
     top.set_xlabel("Encoder layers kept", color=MUTED, fontsize=9)
-    ax.set_title(f"UniXcoder size vs. performance (mean of seeds {', '.join(map(str, seeds))}; "
-                 f"dots = single seeds)", loc="left", fontsize=10, color=INK, pad=10)
-    ax.legend(frameon=False, loc="upper left", fontsize=9)
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.spines[["left", "bottom"]].set_color(GRID)
-    ax.tick_params(colors=MUTED, labelsize=9)
-    ax.grid(axis="y", color=GRID, linewidth=0.8)
-    ax.set_axisbelow(True)
+    for axis in (ax, ax_time):
+        axis.spines[["top", "right"]].set_visible(False)
+        axis.spines[["left", "bottom"]].set_color(GRID)
+        axis.tick_params(colors=MUTED, labelsize=9)
+        axis.grid(axis="y", color=GRID, linewidth=0.8)
+        axis.set_axisbelow(True)
     fig.tight_layout()
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     fig.savefig(out, dpi=300)

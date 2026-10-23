@@ -4,9 +4,11 @@ For every seed and layer count, fine-tunes UniXcoder keeping only the bottom
 k encoder layers (0 = embeddings only) on the unbalanced train split of
 datasets/dataset_seed<seed>.csv and scores it on the test split. Each run
 appends one row to results/model_size.csv (finished runs are skipped on a
-rerun); the figure plots accuracy, F1, precision, fine-tuning time and, when
-measured, energy against the parameter count, from the full model on the left
-to the smallest on the right.
+rerun) and the mean train loss of every epoch to results/model_size_loss.csv,
+to see whether the larger models memorise the train split. Two figures plot,
+against the parameter count, accuracy and F1-score
+(figures/model_size_scores.png) and fine-tuning time and, when measured,
+energy (figures/model_size_cost.png).
 
 Model and training follow the configuration tuned in Putro et al. (2026,
 IEEE Access): AutoModelForSequenceClassification with its [CLS] classification
@@ -44,13 +46,14 @@ RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "represe
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
                   "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps", "weight_decay", "max_len"]
+LOSS_COLUMNS = ["seed", "layers", "representation", "epoch", "train_loss"]
 # A finished run is reused only when it was trained with the same settings
 CONFIG_COLUMNS = ["representation", "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler",
                   "warmup_steps", "weight_decay", "max_len"]
 
 ACC_COLOR = "#2a78d6"
 F1_COLOR = "#eb6834"
-PRECISION_COLOR = "#1baf7a"
+ENERGY_COLOR = "#1baf7a"
 INK = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
@@ -183,6 +186,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         torch.cuda.reset_peak_memory_stats()
     start = time.time()
 
+    epoch_losses = []
     model.train()
     for epoch in range(1, args.epochs + 1):
         losses = []
@@ -203,7 +207,8 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
                 scaler.update()
                 scheduler.step()
                 optimizer.zero_grad()
-        log(f"  epoch {epoch:>2}/{args.epochs}: loss {statistics.mean(losses):.4f}, "
+        epoch_losses.append(statistics.mean(losses))
+        log(f"  epoch {epoch:>2}/{args.epochs}: loss {epoch_losses[-1]:.4f}, "
             f"{time.time() - start:.0f}s elapsed")
 
     train_seconds = time.time() - start
@@ -227,7 +232,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             labels += batch_labels.tolist()
     test_seconds = time.time() - start
 
-    return {
+    result = {
         "seed": seed, "layers": n_layers,
         "params_total": sum(p.numel() for p in model.parameters()),
         "params_trainable": sum(p.numel() for p in model.parameters() if p.requires_grad),
@@ -241,95 +246,107 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "country": args.country if energy else "",
         **config_values(args),
     }
+    loss_rows = [{"seed": seed, "layers": n_layers, "representation": args.representation, "epoch": e,
+                  "train_loss": round(l, 6)} for e, l in enumerate(epoch_losses, start=1)]
+    return result, loss_rows
 
 
-def plot(results, out):
+def plot(results, out_scores, out_cost):
+    """Two figures against the parameter count, from the full model on the left to the smallest
+    on the right, with the encoder layers kept on the top axis:
+      out_scores  accuracy and F1-score of the smelly class on the test split; a line is the
+                  mean over the seeds in results (42, 43 and 44 in the paper) and each faint
+                  dot one seed
+      out_cost    fine-tuning time (left axis, minutes) and, when CodeCarbon measured every
+                  run, fine-tuning energy (right axis, Wh); means over the same seeds
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     # DejaVu Sans ships with matplotlib, so the figure is the same on every machine
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
-    # Energy gets its own panel only when CodeCarbon measured every run
-    has_energy = all(r.get("energy_kwh") not in (None, "") for r in results)
-    if has_energy:
-        fig, (ax, ax_time, ax_energy) = plt.subplots(3, 1, figsize=(7, 8.4), sharex=True,
-                                                     gridspec_kw={"height_ratios": [1.7, 1, 1]})
-    else:
-        fig, (ax, ax_time) = plt.subplots(2, 1, figsize=(7, 6.6), sharex=True,
-                                          gridspec_kw={"height_ratios": [1.7, 1]})
-        ax_energy = None
 
     by_layers = {}
     for r in results:
         by_layers.setdefault(int(r["layers"]), []).append(r)
     layers = sorted(by_layers)
     params = [int(by_layers[k][0]["params_total"]) / 1e6 for k in layers]
-    seeds = sorted({r["seed"] for r in results})
 
-    def draw(axis, metric, color, scale=1.0):
+    def draw(axis, metric, color, scale=1.0, linestyle="-", marker="o", dots=True):
         means = [statistics.mean(float(r[metric]) * scale for r in by_layers[k]) for k in layers]
-        for k, x in zip(layers, params):
-            ys = [float(r[metric]) * scale for r in by_layers[k]]
-            axis.scatter([x] * len(ys), ys, s=14, color=color, alpha=0.35, edgecolors="none", zorder=2)
-        axis.plot(params, means, color=color, linewidth=2, marker="o", markersize=6, zorder=3)
+        if dots:
+            for k, x in zip(layers, params):
+                ys = [float(r[metric]) * scale for r in by_layers[k]]
+                axis.scatter([x] * len(ys), ys, s=14, color=color, alpha=0.35, edgecolors="none", zorder=2)
+        axis.plot(params, means, color=color, linewidth=2, linestyle=linestyle, marker=marker,
+                  markersize=6, zorder=3)
         return means
 
-    # (a) scores; the x axis runs from the full model on the left to the smallest on the right
-    panels = [(ax, f"(a) Accuracy, F1-score and precision (mean of seeds {', '.join(map(str, seeds))}; "
-                   f"dots = single seeds)",
-               [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score"),
-                ("precision", PRECISION_COLOR, "Precision")])]
-    for axis, title, series in panels:
-        ends = []
-        for metric, color, name in series:
-            means = draw(axis, metric, color)
-            axis.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
-            ends.append([means[0], name])
-        # Keep the end labels apart when the lines finish at nearly the same value
-        ends.sort()
-        gap = 0.06
-        for lower, upper in zip(ends, ends[1:]):
-            if upper[0] - lower[0] < gap:
-                middle = (lower[0] + upper[0]) / 2
-                lower[0], upper[0] = middle - gap / 2, middle + gap / 2
-        for y, name in ends:
-            axis.text(params[0] - 1.5, y, name, color=INK, fontsize=9, va="center")
-        axis.set_ylabel("Score on the test split", color=MUTED)
+    def frame(fig, axis, title, twin=None):
+        axis.set_xlim(max(params) + 4, min(params) - 14)
+        top = axis.secondary_xaxis("top")
+        top.set_xticks(params, [f"{k}L" for k in layers])
+        top.tick_params(colors=MUTED, labelsize=8, length=0)
+        top.spines["top"].set_visible(False)
+        top.set_xlabel("Encoder layers kept", color=MUTED, fontsize=9)
+        axis.set_xlabel("Parameters (millions)", color=MUTED)
         axis.set_title(title, loc="left", fontsize=10, color=INK, pad=10)
-        axis.legend(frameon=False, loc="lower left", fontsize=9)
-
-    # (b) fine-tuning time
-    draw(ax_time, "train_seconds", INK, scale=1 / 60)
-    ax_time.set_ylabel("Minutes", color=MUTED)
-    ax_time.set_ylim(bottom=0)
-    ax_time.set_title("(b) Fine-tuning time", loc="left", fontsize=10, color=INK)
-
-    # (c) fine-tuning energy
-    if ax_energy is not None:
-        draw(ax_energy, "energy_kwh", INK, scale=1000)
-        ax_energy.set_ylabel("Wh", color=MUTED)
-        ax_energy.set_ylim(bottom=0)
-        country = ", ".join(sorted({r["country"] for r in results if r.get("country")}))
-        ax_energy.set_title(f"(c) Fine-tuning energy (CodeCarbon{', ' + country if country else ''})",
-                            loc="left", fontsize=10, color=INK)
-    (ax_energy or ax_time).set_xlabel("Parameters (millions)", color=MUTED)
-
-    ax.set_xlim(max(params) + 4, min(params) - 14)
-    top = ax.secondary_xaxis("top")
-    top.set_xticks(params, [f"{k}L" for k in layers])
-    top.tick_params(colors=MUTED, labelsize=8, length=0)
-    top.spines["top"].set_visible(False)
-    top.set_xlabel("Encoder layers kept", color=MUTED, fontsize=9)
-    for axis in [a for a in (ax, ax_time, ax_energy) if a is not None]:
-        axis.spines[["top", "right"]].set_visible(False)
-        axis.spines[["left", "bottom"]].set_color(GRID)
-        axis.tick_params(colors=MUTED, labelsize=9)
+        for a in [axis] + ([twin] if twin else []):
+            a.spines["top"].set_visible(False)
+            a.spines[["left", "bottom", "right"]].set_color(GRID)
+            a.tick_params(colors=MUTED, labelsize=9)
+        if twin is None:
+            axis.spines["right"].set_visible(False)
         axis.grid(axis="y", color=GRID, linewidth=0.8)
         axis.set_axisbelow(True)
-    fig.tight_layout()
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    fig.savefig(out, dpi=300)
+        fig.tight_layout()
+
+    def save(fig, out):
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        fig.savefig(out, dpi=300)
+        plt.close(fig)
+
+    # Accuracy and F1-score
+    fig, ax = plt.subplots(figsize=(7, 4.4))
+    ends = []
+    for metric, color, name in [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]:
+        means = draw(ax, metric, color)
+        ax.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
+        ends.append([means[0], name])
+    # Keep the end labels apart when the lines finish at nearly the same value
+    ends.sort()
+    gap = 0.06
+    for lower, upper in zip(ends, ends[1:]):
+        if upper[0] - lower[0] < gap:
+            middle = (lower[0] + upper[0]) / 2
+            lower[0], upper[0] = middle - gap / 2, middle + gap / 2
+    for y, name in ends:
+        ax.text(params[0] - 1.5, y, name, color=INK, fontsize=9, va="center")
+    ax.set_ylabel("Score on the test split", color=MUTED)
+    ax.legend(frameon=False, loc="lower left", fontsize=9)
+    frame(fig, ax, "Accuracy and F1-Score")
+    save(fig, out_scores)
+
+    # Fine-tuning time and energy; energy only when CodeCarbon measured every run
+    has_energy = all(r.get("energy_kwh") not in (None, "") for r in results)
+    fig, ax = plt.subplots(figsize=(7, 4.0))
+    draw(ax, "train_seconds", INK, scale=1 / 60, dots=False)
+    ax.plot([], [], color=INK, linewidth=2, marker="o", markersize=6, label="Time")
+    ax.set_ylabel("Fine-tuning time (minutes)", color=MUTED)
+    ax.set_ylim(bottom=0)
+    twin = None
+    if has_energy:
+        twin = ax.twinx()
+        draw(twin, "energy_kwh", ENERGY_COLOR, scale=1000, linestyle="--", marker="s", dots=False)
+        ax.plot([], [], color=ENERGY_COLOR, linewidth=2, linestyle="--", marker="s", markersize=6,
+                label="Energy")
+        country = ", ".join(sorted({r["country"] for r in results if r.get("country")}))
+        twin.set_ylabel(f"Fine-tuning energy (Wh{', CodeCarbon ' + country if country else ''})", color=MUTED)
+        twin.set_ylim(bottom=0)
+    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    frame(fig, ax, "Fine-tuning time and energy" if has_energy else "Fine-tuning time", twin)
+    save(fig, out_cost)
 
 
 def config_values(args):
@@ -372,7 +389,9 @@ def main():
     parser.add_argument("--country", default="IDN",
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/model_size.csv")
-    parser.add_argument("--figure", default="figures/model_size.png")
+    parser.add_argument("--loss-out", default="results/model_size_loss.csv")
+    parser.add_argument("--figure-scores", default="figures/model_size_scores.png")
+    parser.add_argument("--figure-cost", default="figures/model_size_cost.png")
     parser.add_argument("--allow-cpu", action="store_true",
                         help="train on the CPU when no GPU is found instead of stopping")
     parser.add_argument("--plot-only", action="store_true")
@@ -405,7 +424,7 @@ def main():
                 if (str(seed), str(n_layers)) in done:
                     log(f"[skip] seed {seed}, {n_layers} layers: already in {args.out}")
                     continue
-                result = run(seed, n_layers, args)
+                result, loss_rows = run(seed, n_layers, args)
                 # Hand the finished model's GPU memory back before the next run
                 gc.collect()
                 torch.cuda.empty_cache()
@@ -415,13 +434,19 @@ def main():
                     if new_file:
                         writer.writeheader()
                     writer.writerow(result)
+                new_file = not os.path.exists(args.loss_out)
+                with open(args.loss_out, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=LOSS_COLUMNS)
+                    if new_file:
+                        writer.writeheader()
+                    writer.writerows(loss_rows)
                 log(f"seed {seed}, {n_layers:>2} layers, {result['params_total'] / 1e6:6.1f}M params: "
                     f"acc {result['accuracy']:.3f}, F1 {result['f1']:.3f}, {result['train_seconds']}s")
 
     results = [r for r in read_results(args.out) if same_config(r, args)]
     if results:
-        plot(results, args.figure)
-        print(f"-> {args.out}, {args.figure}")
+        plot(results, args.figure_scores, args.figure_cost)
+        print(f"-> {args.out}, {args.figure_scores}, {args.figure_cost}")
 
 
 if __name__ == "__main__":

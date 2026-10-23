@@ -41,8 +41,9 @@ test method (true label, predicted label, predicted probability of smelly) to
 results/main_predictions.csv; finished runs are skipped on a rerun.
 
 Usage:
-    pip install torch transformers codecarbon numpy
-    python scripts/4_main_experiment.py --country JPN        # seeds 0-9, every scenario, plus none with 12 layers
+    pip install torch transformers numpy
+    python scripts/4_main_experiment.py                      # seeds 0-9, every scenario, plus none with 12 layers
+    python scripts/4_main_experiment.py --codecarbon --country JPN   # also measure energy (pip install codecarbon)
     python scripts/4_main_experiment.py --seeds 0 --scenarios none weight
     python scripts/4_main_experiment.py --confirm-layers     # skip the 12-layer confirmation
     python scripts/4_main_experiment.py --representation nocomment --scenarios none augment --smell-pcts 37.7
@@ -109,7 +110,7 @@ def start_tracker(args):
     try:
         from codecarbon import OfflineEmissionsTracker
     except ImportError:
-        raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run with --no-codecarbon")
+        raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run without --codecarbon")
     tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False)
     tracker.start()
     return tracker
@@ -451,8 +452,10 @@ def main():
     parser.add_argument("--head-epochs", type=int, default=20, help="epochs of the smote and head stage")
     parser.add_argument("--head-lr", type=float, default=1e-3, help="learning rate of the smote and head stage")
     parser.add_argument("--smote-k", type=int, default=5)
-    parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=True,
-                        help="measure training energy and emissions with CodeCarbon (on by default)")
+    # Off for now: training time is recorded either way, and the model-size ablation showed a
+    # near-constant GPU power, so energy follows time; pass --codecarbon to measure it
+    parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=False,
+                        help="measure training energy and emissions with CodeCarbon (off by default)")
     parser.add_argument("--country", default="IDN",
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/main_experiment.csv")

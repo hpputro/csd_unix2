@@ -54,6 +54,8 @@ CONFIG_COLUMNS = ["representation", "head", "epochs", "lr", "batch_size", "grad_
 ACC_COLOR = "#2a78d6"
 F1_COLOR = "#eb6834"
 ENERGY_COLOR = "#1baf7a"
+# Amber rather than pure yellow, which is hard to see on white
+TIME_COLOR = "#e0a400"
 INK = "#0b0b0b"
 MUTED = "#52514e"
 GRID = "#e4e3df"
@@ -331,9 +333,9 @@ def plot(results, out_scores, out_cost):
     # Fine-tuning time and energy; energy only when CodeCarbon measured every run
     has_energy = all(r.get("energy_kwh") not in (None, "") for r in results)
     fig, ax = plt.subplots(figsize=(7, 4.0))
-    draw(ax, "train_seconds", INK, scale=1 / 60, dots=False)
-    ax.plot([], [], color=INK, linewidth=2, marker="o", markersize=6, label="Time")
-    ax.set_ylabel("Fine-tuning time (minutes)", color=MUTED)
+    draw(ax, "train_seconds", TIME_COLOR, scale=1 / 60, dots=False)
+    ax.plot([], [], color=TIME_COLOR, linewidth=2, marker="o", markersize=6, label="Time")
+    ax.set_ylabel("Time (minutes)", color=MUTED)
     ax.set_ylim(bottom=0)
     twin = None
     if has_energy:
@@ -341,8 +343,8 @@ def plot(results, out_scores, out_cost):
         draw(twin, "energy_kwh", ENERGY_COLOR, scale=1000, linestyle="--", marker="s", dots=False)
         ax.plot([], [], color=ENERGY_COLOR, linewidth=2, linestyle="--", marker="s", markersize=6,
                 label="Energy")
-        country = ", ".join(sorted({r["country"] for r in results if r.get("country")}))
-        twin.set_ylabel(f"Fine-tuning energy (Wh{', CodeCarbon ' + country if country else ''})", color=MUTED)
+        # Energy is measured by CodeCarbon (column country gives the grid used for the emissions)
+        twin.set_ylabel("Energy (Wh)", color=MUTED)
         twin.set_ylim(bottom=0)
     ax.legend(frameon=False, loc="upper right", fontsize=9)
     frame(fig, ax, "Fine-tuning time and energy" if has_energy else "Fine-tuning time", twin)

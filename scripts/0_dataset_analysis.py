@@ -149,7 +149,8 @@ def plot(stats, rows, tok_col, budget, out):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1.25, 1]})
 
     # (a) class balance per project, stacked because clean + smell = project total
-    names = [p["project"] for p in projects]
+    # Project name without its version, e.g. jfreechart-1.0.13 -> jfreechart
+    names = [p["project"].split("-")[0] for p in projects]
     clean = [p["clean"] for p in projects]
     smell = [p["smell"] for p in projects]
     ax1.barh(names, clean, color=CLEAN_COLOR, height=0.62, label="Clean", edgecolor="white", linewidth=1.5)

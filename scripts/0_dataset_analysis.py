@@ -7,8 +7,8 @@ to either input representation. UniXcoder wraps the code as
 
 Step 2 keeps the samples that fit UniXcoder's input and writes:
   - dataset_stats.csv: per-project counts, smell share and token sizes
-  - figures/dataset_distribution.png: class balance per project and token
-    length per class
+  - figures/dataset_projects.png: class balance per project
+  - figures/dataset_length.png: token length per class
 
 Usage:
     pip install transformers matplotlib
@@ -137,7 +137,16 @@ def summarize(name, rows, tok_col):
     }
 
 
-def plot(stats, rows, tok_col, budget, out):
+def plot(stats, rows, tok_col, budget, out_projects, out_length):
+    """Two figures of the methods kept:
+      out_projects  clean and smelly methods per project as stacked bars, sorted by project size,
+                    with the smelly share at the end of each bar; project names lose their
+                    version (jfreechart-1.0.13 -> jfreechart); the 350 methods of the paper hold
+                    27.4% smelly ones
+      out_length    UniXcoder tokens per method (with comments, whitespace collapsed) for each
+                    class, one jittered dot per method, with the class median (black bar), the
+                    class maximum and the 1,020-token limit of the input (dashed line)
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -145,56 +154,54 @@ def plot(stats, rows, tok_col, budget, out):
     # DejaVu Sans ships with matplotlib, so the figure is the same on every machine
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
 
-    projects = sorted(stats[:-1], key=lambda s: s["total"])
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1.25, 1]})
-
-    # (a) class balance per project, stacked because clean + smell = project total
-    # Project name without its version, e.g. jfreechart-1.0.13 -> jfreechart
-    names = [p["project"].split("-")[0] for p in projects]
-    clean = [p["clean"] for p in projects]
-    smell = [p["smell"] for p in projects]
-    ax1.barh(names, clean, color=CLEAN_COLOR, height=0.62, label="Clean", edgecolor="white", linewidth=1.5)
-    ax1.barh(names, smell, left=clean, color=SMELL_COLOR, height=0.62, label="Smell", edgecolor="white", linewidth=1.5)
-    for i, p in enumerate(projects):
-        ax1.text(p["total"] + 1, i, f"{p['smell_pct']:.0f}% smell", va="center", fontsize=8.5, color=MUTED)
-    ax1.set_xlim(0, max(p["total"] for p in projects) * 1.3)
-    ax1.set_xlabel("Methods", color=MUTED)
-    total = stats[-1]
-    ax1.set_title(f"(a) Class balance per project (n = {total['total']}, {total['smell_pct']:.1f}% smell)",
-                  loc="left", fontsize=10.5, color=INK)
-    ax1.legend(frameon=False, loc="lower right", fontsize=9)
-
-    # (b) token length per class, every method as one dot
-    rng = random.Random(0)
-    for y, (label, color, name) in enumerate([("0", CLEAN_COLOR, "Clean"), ("1", SMELL_COLOR, "Smell")]):
-        toks = [int(r[tok_col]) for r in rows if r["label"] == label]
-        ax2.scatter(toks, [y + rng.uniform(-0.22, 0.22) for _ in toks], s=12, color=color, alpha=0.7,
-                    edgecolors="white", linewidths=0.4)
-        med = statistics.median(toks)
-        ax2.plot([med, med], [y - 0.32, y + 0.32], color=INK, linewidth=2)
-        ax2.text(med, y + 0.38, f"median {med:.0f}", ha="center", fontsize=8.5, color=INK)
-        ax2.text(max(toks), y - 0.42, f"max {max(toks)}", ha="right", fontsize=8.5, color=MUTED)
-    ax2.axvline(budget, color=MUTED, linestyle="--", linewidth=1)
-    ax2.text(budget, 1.62, f"limit {budget}", ha="right", fontsize=8.5, color=MUTED)
-    ax2.set_yticks([0, 1], ["Clean", "Smell"])
-    ax2.set_ylim(-0.6, 1.75)
-    ax2.set_xlim(0, budget * 1.04)
-    ax2.set_xlabel("UniXcoder tokens per method", color=MUTED)
-    ax2.set_title("(b) Method length by class", loc="left", fontsize=10.5, color=INK)
-
-    for ax in (ax1, ax2):
+    def finish(fig, ax, title, out):
+        ax.set_title(title, loc="left", fontsize=10.5, color=INK)
         ax.spines[["top", "right"]].set_visible(False)
         ax.spines[["left", "bottom"]].set_color(GRID)
         ax.tick_params(colors=MUTED, labelsize=9)
         ax.grid(axis="x", color=GRID, linewidth=0.8)
         ax.set_axisbelow(True)
+        fig.tight_layout()
+        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+        fig.savefig(out, dpi=300)
+        plt.close(fig)
 
-    fig.tight_layout()
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    fig.savefig(out, dpi=300)
+    # Class balance per project, stacked because clean + smell = project total
+    projects = sorted(stats[:-1], key=lambda s: s["total"])
+    fig, ax = plt.subplots(figsize=(6.2, 4.6))
+    names = [p["project"].split("-")[0] for p in projects]
+    clean = [p["clean"] for p in projects]
+    smell = [p["smell"] for p in projects]
+    ax.barh(names, clean, color=CLEAN_COLOR, height=0.62, label="Clean", edgecolor="white", linewidth=1.5)
+    ax.barh(names, smell, left=clean, color=SMELL_COLOR, height=0.62, label="Smell", edgecolor="white", linewidth=1.5)
+    for i, p in enumerate(projects):
+        ax.text(p["total"] + 1, i, f"{p['smell_pct']:.0f}% smell", va="center", fontsize=8.5, color=MUTED)
+    ax.set_xlim(0, max(p["total"] for p in projects) * 1.3)
+    ax.set_xlabel("Methods", color=MUTED)
+    ax.legend(frameon=False, loc="lower right", fontsize=9)
+    finish(fig, ax, "Class balance per project", out_projects)
+
+    # Token length per class, every method as one dot
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    rng = random.Random(0)
+    for y, (label, color, name) in enumerate([("0", CLEAN_COLOR, "Clean"), ("1", SMELL_COLOR, "Smell")]):
+        toks = [int(r[tok_col]) for r in rows if r["label"] == label]
+        ax.scatter(toks, [y + rng.uniform(-0.22, 0.22) for _ in toks], s=12, color=color, alpha=0.7,
+                   edgecolors="white", linewidths=0.4)
+        med = statistics.median(toks)
+        ax.plot([med, med], [y - 0.32, y + 0.32], color=INK, linewidth=2)
+        ax.text(med, y + 0.38, f"median {med:.0f}", ha="center", fontsize=8.5, color=INK)
+        ax.text(max(toks), y - 0.42, f"max {max(toks)}", ha="right", fontsize=8.5, color=MUTED)
+    ax.axvline(budget, color=MUTED, linestyle="--", linewidth=1)
+    ax.text(budget, 1.62, f"limit {budget}", ha="right", fontsize=8.5, color=MUTED)
+    ax.set_yticks([0, 1], ["Clean", "Smell"])
+    ax.set_ylim(-0.6, 1.75)
+    ax.set_xlim(0, budget * 1.04)
+    ax.set_xlabel("UniXcoder tokens per method", color=MUTED)
+    finish(fig, ax, "Method length by class", out_length)
 
 
-def describe(rows, code_dir, fit_col, exclude_projects, budget, out, figure):
+def describe(rows, code_dir, fit_col, exclude_projects, budget, out, figure_projects, figure_length):
     tok_col = "tok_with_comments" if fit_col == "fits_with_comments" else "tok_no_comments"
     rows = [dict(r) for r in rows if str(r[fit_col]) == "1" and r["project"] not in exclude_projects]
     for r in rows:
@@ -216,8 +223,8 @@ def describe(rows, code_dir, fit_col, exclude_projects, budget, out, figure):
     for s in stats:
         print(" | ".join(str(s[c]) for c in cols))
 
-    plot(stats, rows, tok_col, budget, figure)
-    print(f"-> {out}, {figure}")
+    plot(stats, rows, tok_col, budget, figure_projects, figure_length)
+    print(f"-> {out}, {figure_projects}, {figure_length}")
 
 
 def main():
@@ -234,7 +241,8 @@ def main():
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--exclude-projects", nargs="*", default=[])
     parser.add_argument("--out", default="dataset_stats.csv")
-    parser.add_argument("--figure", default="figures/dataset_distribution.png")
+    parser.add_argument("--figure-projects", default="figures/dataset_projects.png")
+    parser.add_argument("--figure-length", default="figures/dataset_length.png")
     args = parser.parse_args()
     budget = args.max_len - SPECIAL_TOKENS
 
@@ -252,7 +260,7 @@ def main():
         report_tokens(results, budget, args.max_len)
         print(f"-> {args.tokens}")
 
-    describe(results, args.code_dir, args.fit_col, args.exclude_projects, budget, args.out, args.figure)
+    describe(results, args.code_dir, args.fit_col, args.exclude_projects, budget, args.out, args.figure_projects, args.figure_length)
 
 
 if __name__ == "__main__":

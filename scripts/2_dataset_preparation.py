@@ -5,7 +5,7 @@ projects left out) and, per seed:
   - a train/test split (20% test) stratified by label, project and token
     length; identical methods stay on the same side
   - the oversampling selection on the train side: every smelly method and
-    25% of the clean ones (selected = 1). ROS, SMOTE and the augmentation all
+    25% of the clean ones (selected = 1). SMOTE and the augmentation both
     add one sample per selected method, so the scenarios differ only in how
     the extra sample is made; class weighting uses the same proportions
   - one augmentation variant per selected method, drawn from the operators

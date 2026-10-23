@@ -35,9 +35,10 @@ as 4 x 4 gradient accumulation, 50 warmup steps, cosine schedule, no weight
 decay, mixed precision; the model of the last epoch is scored. The none run
 saves the [CLS] vectors of its train and test methods to
 results/features/seed<seed>_<layers>L_<representation>.npz for the smote and
-head runs. One row per run goes to results/main_experiment.csv and the mean
-train loss of every epoch to results/main_loss.csv; finished runs are skipped
-on a rerun.
+head runs. One row per run goes to results/main_experiment.csv, the mean
+train loss of every epoch to results/main_loss.csv and the prediction for every
+test method (true label, predicted label, predicted probability of smelly) to
+results/main_predictions.csv; finished runs are skipped on a rerun.
 
 Usage:
     pip install torch transformers codecarbon numpy
@@ -74,6 +75,8 @@ RESULT_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "
                   "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps",
                   "weight_decay", "max_len", "head_epochs", "head_lr", "smote_k"]
 LOSS_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage", "epoch", "train_loss"]
+PREDICTION_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage", "sample_id",
+                      "true_y", "pred_y", "prob_smell"]
 
 
 def load_rows(dataset_csv, smell_pct):
@@ -133,6 +136,14 @@ def cost_values(args, device, train_seconds, test_seconds, energy):
         "emissions_kg": round(energy.emissions, 6) if energy else "",
         "country": args.country if energy else "",
     }
+
+
+def prediction_rows(seed, scenario, smell_pct, n_layers, stage, args, ids, labels, probs):
+    # pred_y is the argmax of the two logits, i.e. prob_smell > 0.5
+    return [{"seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers,
+             "representation": args.representation, "stage": stage, "sample_id": sid, "true_y": label,
+             "pred_y": int(prob > 0.5), "prob_smell": round(prob, 6)}
+            for sid, label, prob in zip(ids, labels, probs)]
 
 
 def score_values(labels, preds):
@@ -210,12 +221,13 @@ def finetune(seed, scenario, smell_pct, n_layers, args):
     log("scoring the test split")
     model.eval()
     start = time.time()
-    preds, labels = [], []
+    preds, labels, probs = [], [], []
     with torch.no_grad():
         for ids, batch_labels in model_size.batches(test, args.batch_size, pad_id, False, rng):
             with torch.autocast(device.type, enabled=use_amp):
                 logits = model(ids.to(device))
             preds += logits.argmax(-1).tolist()
+            probs += logits.float().softmax(-1)[:, 1].tolist()
             labels += batch_labels.tolist()
     test_seconds = time.time() - start
 
@@ -235,7 +247,9 @@ def finetune(seed, scenario, smell_pct, n_layers, args):
     loss_rows = [{"seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers,
                   "representation": args.representation, "stage": "end-to-end", "epoch": e,
                   "train_loss": round(l, 6)} for e, l in enumerate(losses_per_epoch, start=1)]
-    return result, loss_rows
+    pred_rows = prediction_rows(seed, scenario, smell_pct, n_layers, "end-to-end", args,
+                                [r["sample_id"] for r in test_rows], labels, probs)
+    return result, loss_rows, pred_rows
 
 
 def features_path(args, seed, n_layers):
@@ -351,6 +365,7 @@ def train_head(seed, scenario, smell_pct, n_layers, args):
     with torch.no_grad():
         logits = head(torch.tensor(data["test_x"], dtype=torch.float32).unsqueeze(1).to(device))
     preds = logits.argmax(-1).tolist()
+    probs = logits.float().softmax(-1)[:, 1].tolist()
     test_seconds = time.time() - start
 
     result = {
@@ -365,7 +380,9 @@ def train_head(seed, scenario, smell_pct, n_layers, args):
     loss_rows = [{"seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers,
                   "representation": args.representation, "stage": "head", "epoch": e,
                   "train_loss": round(l, 6)} for e, l in enumerate(losses_per_epoch, start=1)]
-    return result, loss_rows
+    pred_rows = prediction_rows(seed, scenario, smell_pct, n_layers, "head", args,
+                                [str(i) for i in data["test_ids"]], data["test_y"].tolist(), probs)
+    return result, loss_rows, pred_rows
 
 
 def config_values(args):
@@ -440,6 +457,7 @@ def main():
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/main_experiment.csv")
     parser.add_argument("--loss-out", default="results/main_loss.csv")
+    parser.add_argument("--pred-out", default="results/main_predictions.csv")
     parser.add_argument("--allow-cpu", action="store_true",
                         help="train on the CPU when no GPU is found instead of stopping")
     args = parser.parse_args()
@@ -473,26 +491,28 @@ def run_all(args):
                 # vectors were deleted), keep that row
                 log(f"seed {seed}: no [CLS] vectors at {features_path(args, seed, n_layers)}, "
                     f"training the none model again to make them")
-                result, loss_rows = finetune(seed, "none", "27.5", n_layers, args)
+                result, loss_rows, pred_rows = finetune(seed, "none", "27.5", n_layers, args)
                 none_key = (str(seed), "none", "27.5", str(n_layers))
                 if none_key not in done:
                     append_rows(args.out, RESULT_COLUMNS, [result])
                     append_rows(args.loss_out, LOSS_COLUMNS, loss_rows)
+                    append_rows(args.pred_out, PREDICTION_COLUMNS, pred_rows)
                     done.add(none_key)
             if scenario in ("smote", "head"):
-                result, loss_rows = train_head(seed, scenario, smell_pct, n_layers, args)
+                result, loss_rows, pred_rows = train_head(seed, scenario, smell_pct, n_layers, args)
             else:
-                result, loss_rows = finetune(seed, scenario, smell_pct, n_layers, args)
+                result, loss_rows, pred_rows = finetune(seed, scenario, smell_pct, n_layers, args)
             # Hand the finished model's GPU memory back before the next run
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             append_rows(args.out, RESULT_COLUMNS, [result])
             append_rows(args.loss_out, LOSS_COLUMNS, loss_rows)
+            append_rows(args.pred_out, PREDICTION_COLUMNS, pred_rows)
             done.add(key)
             log(f"seed {seed}, {scenario} {smell_pct}%, {n_layers} layers: precision {result['precision']:.3f}, "
                 f"F1 {result['f1']:.3f}, MCC {result['mcc']:.3f}, {result['train_seconds']}s")
-    print(f"-> {args.out}, {args.loss_out}")
+    print(f"-> {args.out}, {args.loss_out}, {args.pred_out}")
 
 
 if __name__ == "__main__":

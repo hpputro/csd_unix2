@@ -8,7 +8,8 @@ rerun) and the mean train loss of every epoch to results/model_size_loss.csv,
 to see whether the larger models memorise the train split. Two figures plot,
 against the parameter count, accuracy and F1-score
 (figures/model_size_scores.png) and fine-tuning time and, when measured,
-energy (figures/model_size_cost.png).
+energy (figures/model_size_cost.png); a third plots the train loss per epoch
+of a few sizes (figures/model_size_loss.png).
 
 Model and training follow the configuration tuned in Putro et al. (2026,
 IEEE Access): AutoModelForSequenceClassification with its [CLS] classification
@@ -28,6 +29,7 @@ Usage:
     python scripts/3_model_size.py --batch-size 2 --grad-accum 8   # still batch 16, less memory
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
+    python scripts/3_model_size.py --plot-only --loss-layers 12 4 2 1
 """
 import argparse
 import csv
@@ -133,6 +135,9 @@ def build_classifier(model, n_layers, pad_id):
 
 
 def scores(labels, preds):
+    """Precision, recall and F1 of the smelly class (label 1), accuracy, and MCC over both classes.
+    A zero denominator gives 0, as scikit-learn's zero_division=0 and its MCC do: a model that
+    never predicts smelly gets precision, F1 and MCC 0 (recall is 0 by definition)."""
     tp = sum(l == 1 and p == 1 for l, p in zip(labels, preds))
     fp = sum(l == 0 and p == 1 for l, p in zip(labels, preds))
     fn = sum(l == 1 and p == 0 for l, p in zip(labels, preds))
@@ -351,6 +356,53 @@ def plot(results, out_scores, out_cost):
     save(fig, out_cost)
 
 
+def plot_loss(loss_rows, layers, out):
+    """Mean train loss per epoch over the seeds in loss_rows (42, 43 and 44 in the paper), one line
+    per layer count in layers, each seed as a faint line. The dotted line is the entropy of the
+    class proportion of the train split (77 smelly of 280, 0.589 nats): the loss of a model that
+    learns only that proportion and nothing about the code."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
+    colors = [F1_COLOR, ACC_COLOR, MUTED, ENERGY_COLOR, TIME_COLOR]
+    fig, ax = plt.subplots(figsize=(7, 4.0))
+    for n_layers, color in zip(layers, colors):
+        runs = {}
+        for r in loss_rows:
+            if int(r["layers"]) == n_layers:
+                runs.setdefault(r["seed"], []).append((int(r["epoch"]), float(r["train_loss"])))
+        if not runs:
+            continue
+        for points in runs.values():
+            points.sort()
+            ax.plot([e for e, _ in points], [l for _, l in points], color=color, alpha=0.25, linewidth=1)
+        epochs = sorted({e for points in runs.values() for e, _ in points})
+        means = [statistics.mean(l for points in runs.values() for e, l in points if e == epoch) for epoch in epochs]
+        ax.plot(epochs, means, color=color, linewidth=2, marker="o", markersize=4,
+                label=f"{n_layers} layer{'s' if n_layers != 1 else ''}")
+        ax.text(epochs[-1] + 0.3, means[-1], f"{means[-1]:.3f}", color=color, fontsize=8.5, va="center")
+    prior = 77 / 280
+    ax.axhline(-(prior * math.log(prior) + (1 - prior) * math.log(1 - prior)), color=MUTED, linestyle=":",
+               linewidth=1.2, label="Class proportion only")
+    ax.set_xlabel("Epoch", color=MUTED)
+    ax.set_ylabel("Train loss", color=MUTED)
+    ax.set_ylim(bottom=0)
+    ax.set_xticks(range(0, 21, 5))
+    ax.set_title("Training loss per epoch", loc="left", fontsize=10, color=INK, pad=10)
+    ax.legend(frameon=False, loc="upper right", fontsize=9)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.spines[["left", "bottom"]].set_color(GRID)
+    ax.tick_params(colors=MUTED, labelsize=9)
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    fig.savefig(out, dpi=300)
+    plt.close(fig)
+
+
 def config_values(args):
     return {"representation": args.representation, "head": "cls", "epochs": args.epochs, "lr": args.lr,
             "batch_size": args.batch_size, "grad_accum": args.grad_accum, "scheduler": args.scheduler,
@@ -394,6 +446,9 @@ def main():
     parser.add_argument("--loss-out", default="results/model_size_loss.csv")
     parser.add_argument("--figure-scores", default="figures/model_size_scores.png")
     parser.add_argument("--figure-cost", default="figures/model_size_cost.png")
+    parser.add_argument("--figure-loss", default="figures/model_size_loss.png")
+    parser.add_argument("--loss-layers", type=int, nargs="*", default=[12, 4, 1],
+                        help="layer counts drawn in the loss figure")
     parser.add_argument("--allow-cpu", action="store_true",
                         help="train on the CPU when no GPU is found instead of stopping")
     parser.add_argument("--plot-only", action="store_true")
@@ -449,6 +504,10 @@ def main():
     if results:
         plot(results, args.figure_scores, args.figure_cost)
         print(f"-> {args.out}, {args.figure_scores}, {args.figure_cost}")
+    loss_rows = [r for r in read_results(args.loss_out) if r["representation"] == args.representation]
+    if loss_rows:
+        plot_loss(loss_rows, args.loss_layers, args.figure_loss)
+        print(f"-> {args.figure_loss}")
 
 
 if __name__ == "__main__":

@@ -282,7 +282,7 @@ def plot(results, out_scores, out_cost):
                 ys = [float(r[metric]) * scale for r in by_layers[k]]
                 axis.scatter([x] * len(ys), ys, s=14, color=color, alpha=0.35, edgecolors="none", zorder=2)
         axis.plot(params, means, color=color, linewidth=2, linestyle=linestyle, marker=marker,
-                  markersize=6, zorder=3)
+                  markersize=7 if marker == "x" else 6, markeredgewidth=2, zorder=3)
         return means
 
     def frame(fig, axis, title, twin=None):
@@ -340,9 +340,9 @@ def plot(results, out_scores, out_cost):
     twin = None
     if has_energy:
         twin = ax.twinx()
-        draw(twin, "energy_kwh", ENERGY_COLOR, scale=1000, linestyle="--", marker="s", dots=False)
-        ax.plot([], [], color=ENERGY_COLOR, linewidth=2, linestyle="--", marker="s", markersize=6,
-                label="Energy")
+        draw(twin, "energy_kwh", ENERGY_COLOR, scale=1000, linestyle="--", marker="x", dots=False)
+        ax.plot([], [], color=ENERGY_COLOR, linewidth=2, linestyle="--", marker="x", markersize=7,
+                markeredgewidth=2, label="Energy")
         # Energy is measured by CodeCarbon (column country gives the grid used for the emissions)
         twin.set_ylabel("Energy (Wh)", color=MUTED)
         twin.set_ylim(bottom=0)

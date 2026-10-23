@@ -20,7 +20,7 @@ training decisions.
 
 Usage:
     pip install torch transformers matplotlib codecarbon
-    python scripts/3_model_size.py --country JPN         # seeds 42 43 44, layers 12 10 8 6 4 3 2 1 0
+    python scripts/3_model_size.py --country JPN         # seeds 42 43 44, layers 12 10 8 6 5 4 3 2 1 0
     python scripts/3_model_size.py --no-codecarbon       # skip the energy measurement
     python scripts/3_model_size.py --allow-cpu           # train on the CPU when no GPU is found
     python scripts/3_model_size.py --batch-size 2 --grad-accum 8   # still batch 16, less memory
@@ -352,7 +352,7 @@ def read_results(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seeds", type=int, nargs="*", default=[42, 43, 44])
-    parser.add_argument("--layers", type=int, nargs="*", default=[12, 10, 8, 6, 4, 3, 2, 1, 0])
+    parser.add_argument("--layers", type=int, nargs="*", default=[12, 10, 8, 6, 5, 4, 3, 2, 1, 0])
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--dataset-dir", default="datasets")
     parser.add_argument("--comment-dir", default="ds_comment")

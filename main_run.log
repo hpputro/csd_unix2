@@ -1,0 +1,131 @@
+[07:50:26] importing torch and transformers
+[07:50:28] imports done
+[07:50:28] seed 0, none 27.5%, 4 layers: loading microsoft/unixcoder-base
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[07:50:31] 280 train (203 clean, 77 smelly) and 70 test methods; class weights 1.0000 / 1.0000
+[07:50:33]   epoch  1/20: loss 0.6890, 2s elapsed
+[07:50:35]   epoch  2/20: loss 0.6856, 4s elapsed
+[07:50:36]   epoch  3/20: loss 0.6710, 5s elapsed
+[07:50:38]   epoch  4/20: loss 0.6552, 7s elapsed
+[07:50:40]   epoch  5/20: loss 0.6393, 9s elapsed
+[07:50:42]   epoch  6/20: loss 0.6264, 11s elapsed
+[07:50:43]   epoch  7/20: loss 0.6128, 12s elapsed
+[07:50:45]   epoch  8/20: loss 0.5947, 14s elapsed
+[07:50:47]   epoch  9/20: loss 0.4930, 16s elapsed
+[07:50:49]   epoch 10/20: loss 0.3968, 18s elapsed
+[07:50:50]   epoch 11/20: loss 0.3330, 19s elapsed
+[07:50:52]   epoch 12/20: loss 0.2591, 21s elapsed
+[07:50:54]   epoch 13/20: loss 0.2238, 23s elapsed
+[07:50:56]   epoch 14/20: loss 0.2118, 25s elapsed
+[07:50:58]   epoch 15/20: loss 0.1820, 26s elapsed
+[07:50:59]   epoch 16/20: loss 0.2015, 28s elapsed
+[07:51:01]   epoch 17/20: loss 0.1968, 30s elapsed
+[07:51:03]   epoch 18/20: loss 0.1784, 32s elapsed
+[07:51:05]   epoch 19/20: loss 0.1724, 34s elapsed
+[07:51:06]   epoch 20/20: loss 0.1762, 35s elapsed
+[07:51:06] scoring the test split
+[07:51:07] [CLS] vectors -> results/features/seed0_4L_comment.npz
+[07:51:07] seed 0, none 27.5%, 4 layers: precision 0.833, F1 0.811, MCC 0.743, 35.3s
+[07:51:07] seed 0, none 27.5%, 12 layers: loading microsoft/unixcoder-base
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[07:51:09] 280 train (203 clean, 77 smelly) and 70 test methods; class weights 1.0000 / 1.0000
+[07:51:13]   epoch  1/20: loss 0.6631, 5s elapsed
+[07:51:18]   epoch  2/20: loss 0.5166, 9s elapsed
+[07:51:22]   epoch  3/20: loss 0.3423, 14s elapsed
+[07:51:27]   epoch  4/20: loss 0.2619, 18s elapsed
+[07:51:32]   epoch  5/20: loss 0.2625, 23s elapsed
+[07:51:36]   epoch  6/20: loss 0.1631, 28s elapsed
+[07:51:41]   epoch  7/20: loss 0.1446, 33s elapsed
+[07:51:46]   epoch  8/20: loss 0.1020, 37s elapsed
+[07:51:51]   epoch  9/20: loss 0.0562, 42s elapsed
+[07:51:55]   epoch 10/20: loss 0.0461, 47s elapsed
+[07:52:00]   epoch 11/20: loss 0.0233, 51s elapsed
+[07:52:05]   epoch 12/20: loss 0.0096, 56s elapsed
+[07:52:10]   epoch 13/20: loss 0.0102, 61s elapsed
+[07:52:14]   epoch 14/20: loss 0.0058, 66s elapsed
+[07:52:19]   epoch 15/20: loss 0.0062, 70s elapsed
+[07:52:24]   epoch 16/20: loss 0.0026, 75s elapsed
+[07:52:29]   epoch 17/20: loss 0.0087, 80s elapsed
+[07:52:33]   epoch 18/20: loss 0.0052, 85s elapsed
+[07:52:38]   epoch 19/20: loss 0.0156, 90s elapsed
+[07:52:43]   epoch 20/20: loss 0.0099, 94s elapsed
+[07:52:43] scoring the test split
+[07:52:45] [CLS] vectors -> results/features/seed0_12L_comment.npz
+[07:52:45] seed 0, none 27.5%, 12 layers: precision 0.739, F1 0.809, MCC 0.736, 94.3s
+[07:52:45] seed 0, head 27.5%, 4 layers: head on 280 vectors (203 clean, 77 smelly)
+[07:52:46]   head loss 0.1978 (epoch 1) -> 0.0739 (epoch 20)
+[07:52:46] seed 0, head 27.5%, 4 layers: precision 0.809, F1 0.850, MCC 0.792, 0.8s
+[07:52:46] seed 0, weight 37.7%, 4 layers: loading microsoft/unixcoder-base
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[07:52:47] 280 train (203 clean, 77 smelly) and 70 test methods; class weights 1.2512 / 2.0000
+[07:52:49]   epoch  1/20: loss 0.6902, 2s elapsed
+[07:52:51]   epoch  2/20: loss 0.6898, 4s elapsed
+[07:52:53]   epoch  3/20: loss 0.6808, 5s elapsed
+[07:52:54]   epoch  4/20: loss 0.6729, 7s elapsed
+[07:52:56]   epoch  5/20: loss 0.6654, 9s elapsed
+[07:52:58]   epoch  6/20: loss 0.6576, 11s elapsed
+[07:53:00]   epoch  7/20: loss 0.6492, 12s elapsed
+[07:53:01]   epoch  8/20: loss 0.6402, 14s elapsed
+[07:53:03]   epoch  9/20: loss 0.5759, 16s elapsed
+[07:53:05]   epoch 10/20: loss 0.5151, 18s elapsed
+[07:53:07]   epoch 11/20: loss 0.4684, 19s elapsed
+[07:53:08]   epoch 12/20: loss 0.4512, 21s elapsed
+[07:53:10]   epoch 13/20: loss 0.4163, 23s elapsed
+[07:53:12]   epoch 14/20: loss 0.3936, 25s elapsed
+[07:53:14]   epoch 15/20: loss 0.3615, 27s elapsed
+[07:53:16]   epoch 16/20: loss 0.3541, 28s elapsed
+[07:53:17]   epoch 17/20: loss 0.3330, 30s elapsed
+[07:53:19]   epoch 18/20: loss 0.3297, 32s elapsed
+[07:53:21]   epoch 19/20: loss 0.3176, 34s elapsed
+[07:53:23]   epoch 20/20: loss 0.3246, 35s elapsed
+[07:53:23] scoring the test split
+[07:53:23] seed 0, weight 37.7%, 4 layers: precision 0.842, F1 0.842, MCC 0.783, 35.4s
+[07:53:23] seed 0, weight 50.0%, 4 layers: loading microsoft/unixcoder-base
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[07:53:24] 280 train (203 clean, 77 smelly) and 70 test methods; class weights 1.2512 / 3.2987
+[07:53:26]   epoch  1/20: loss 0.6913, 2s elapsed
+[07:53:28]   epoch  2/20: loss 0.6934, 4s elapsed
+[07:53:29]   epoch  3/20: loss 0.6902, 5s elapsed
+[07:53:31]   epoch  4/20: loss 0.6879, 7s elapsed
+[07:53:33]   epoch  5/20: loss 0.6849, 9s elapsed
+[07:53:35]   epoch  6/20: loss 0.6820, 11s elapsed
+[07:53:36]   epoch  7/20: loss 0.6710, 12s elapsed
+[07:53:38]   epoch  8/20: loss 0.6349, 14s elapsed
+[07:53:40]   epoch  9/20: loss 0.5495, 16s elapsed
+[07:53:42]   epoch 10/20: loss 0.5287, 18s elapsed
+[07:53:43]   epoch 11/20: loss 0.4845, 19s elapsed
+[07:53:45]   epoch 12/20: loss 0.4649, 21s elapsed
+[07:53:47]   epoch 13/20: loss 0.4474, 23s elapsed
+[07:53:49]   epoch 14/20: loss 0.4232, 25s elapsed
+[07:53:51]   epoch 15/20: loss 0.4047, 27s elapsed
+[07:53:52]   epoch 16/20: loss 0.4075, 28s elapsed
+[07:53:54]   epoch 17/20: loss 0.3928, 30s elapsed
+[07:53:56]   epoch 18/20: loss 0.3984, 32s elapsed
+[07:53:58]   epoch 19/20: loss 0.4026, 34s elapsed
+[07:54:00]   epoch 20/20: loss 0.3996, 35s elapsed
+[07:54:00] scoring the test split
+[07:54:00] seed 0, weight 50.0%, 4 layers: precision 0.800, F1 0.821, MCC 0.752, 35.5s
+[07:54:00] seed 0, augment 37.7%, 4 layers: loading microsoft/unixcoder-base
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[07:54:02] 408 train (254 clean, 154 smelly) and 70 test methods; class weights 1.0000 / 1.0000
+[07:54:05]   epoch  1/20: loss 0.6911, 3s elapsed
+[07:54:07]   epoch  2/20: loss 0.6849, 6s elapsed
+[07:54:10]   epoch  3/20: loss 0.6784, 8s elapsed
+[07:54:13]   epoch  4/20: loss 0.6704, 11s elapsed
+[07:54:16]   epoch  5/20: loss 0.6564, 14s elapsed
+[07:54:19]   epoch  6/20: loss 0.5338, 17s elapsed
+[07:54:21]   epoch  7/20: loss 0.5032, 20s elapsed
+[07:54:24]   epoch  8/20: loss 0.4501, 22s elapsed
+[07:54:27]   epoch  9/20: loss 0.3937, 25s elapsed
+[07:54:30]   epoch 10/20: loss 0.3589, 28s elapsed
+[07:54:33]   epoch 11/20: loss 0.3270, 31s elapsed
+[07:54:36]   epoch 12/20: loss 0.2972, 34s elapsed
+[07:54:38]   epoch 13/20: loss 0.2724, 37s elapsed
+[07:54:41]   epoch 14/20: loss 0.2549, 40s elapsed
+[07:54:44]   epoch 15/20: loss 0.2402, 42s elapsed
+[07:54:47]   epoch 16/20: loss 0.2304, 45s elapsed

@@ -1,29 +1,30 @@
-"""Main experiment: balancing method x train ratio on a layer-pruned UniXcoder.
+"""Main experiment: balancing method x smelly share of the train side on a layer-pruned UniXcoder.
 
 For every seed, fine-tunes UniXcoder (bottom 4 encoder layers under the [CLS]
 head, as chosen in 3_model_size.py) on datasets/dataset_seed<seed>.csv and
 scores it on the test split, which always holds original code at the natural
-class proportion. The scenarios:
+class proportion (27.1% smelly). The scenarios, by the smelly share (%) of the
+train side (column smell_pct of the dataset CSV):
 
-  none     ratio 0.38   original train methods only (also run with 12 layers to
+  none     27.5         original train methods only (also run with 12 layers to
                         confirm the model size)
-  weight   ratio 0.61, 1.0   original train methods, cross-entropy weighted per
+  weight   37.7, 50.0   original train methods, cross-entropy weighted per
                         class by (original + extra rows) / original rows, e.g.
-                        smelly 2 and clean 1.25 at 0.61
-  augment  ratio 0.61, 1.0   original train methods plus the augmented variants
-                        whose ratio column is <= the ratio
-  smote    ratio 0.61, 1.0   two stages (Kang et al., 2020): the encoder of the
+                        smelly 2 and clean 1.25 at 37.7%
+  augment  37.7, 50.0   original train methods plus the augmented variants
+                        whose smell_pct is <= the share
+  smote    37.7, 50.0   two stages (Kang et al., 2020): the encoder of the
                         none run of the same seed is frozen, the final-layer
                         [CLS] vectors of the train methods get one SMOTE point
                         (Chawla et al., 2002; k = 5 nearest neighbours of the
                         same class) per extra row of the dataset, and a fresh
                         classification head is trained on real + synthetic
                         vectors
-  head     ratio 0.38   control for smote: the same fresh head trained on the
+  head     27.5         control for smote: the same fresh head trained on the
                         real vectors only
 
 Every extra row stands for one extra sample of its source method, so the
-three methods add the same number of samples per method at a given ratio. The
+three methods add the same number of samples per method at a given share. The
 head stage uses AdamW lr 1e-3, 20 epochs, batch 16, cosine schedule without
 warmup, fixed before any run. The smote and head rows record the head stage
 only (column stage = head); their encoder cost is that of the none row of the
@@ -43,7 +44,7 @@ Usage:
     python scripts/4_main_experiment.py --country JPN        # seeds 0-9, every scenario, plus none with 12 layers
     python scripts/4_main_experiment.py --seeds 0 --scenarios none weight
     python scripts/4_main_experiment.py --confirm-layers     # skip the 12-layer confirmation
-    python scripts/4_main_experiment.py --representation nocomment --scenarios none augment --ratios 0.61
+    python scripts/4_main_experiment.py --representation nocomment --scenarios none augment --smell-pcts 37.7
 """
 import argparse
 import csv
@@ -60,29 +61,29 @@ import zlib
 model_size = importlib.import_module("3_model_size")
 log = model_size.log
 
-SCENARIOS = {"none": ["0.38"], "head": ["0.38"], "weight": ["0.61", "1.0"],
-             "augment": ["0.61", "1.0"], "smote": ["0.61", "1.0"]}
+SCENARIOS = {"none": ["27.5"], "head": ["27.5"], "weight": ["37.7", "50.0"],
+             "augment": ["37.7", "50.0"], "smote": ["37.7", "50.0"]}
 # none comes first: smote and head read the vectors its run saves
 ORDER = ["none", "head", "weight", "augment", "smote"]
 
-RESULT_COLUMNS = ["seed", "scenario", "ratio", "layers", "representation", "stage",
+RESULT_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage",
                   "train_clean", "train_smell", "weight_clean", "weight_smell",
                   "params_total", "params_trainable",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
                   "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps",
                   "weight_decay", "max_len", "head_epochs", "head_lr", "smote_k"]
-LOSS_COLUMNS = ["seed", "scenario", "ratio", "layers", "representation", "stage", "epoch", "train_loss"]
+LOSS_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage", "epoch", "train_loss"]
 
 
-def load_rows(dataset_csv, ratio):
-    """Train rows used at the given ratio and the test rows of one seed."""
+def load_rows(dataset_csv, smell_pct):
+    """Train rows used at the given smelly share (%) and the test rows of one seed."""
     train, test = [], []
     with open(dataset_csv, newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r["split"] == "test":
                 test.append(r)
-            elif float(r["ratio"]) <= float(ratio):
+            elif float(r["smell_pct"]) <= float(smell_pct):
                 train.append(r)
     return train, test
 
@@ -138,19 +139,19 @@ def score_values(labels, preds):
     return {k: round(v, 4) if isinstance(v, float) else v for k, v in model_size.scores(labels, preds).items()}
 
 
-def finetune(seed, scenario, ratio, n_layers, args):
+def finetune(seed, scenario, smell_pct, n_layers, args):
     """End-to-end fine-tuning (none, weight, augment). Returns the result row and the loss rows."""
     import torch
     from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 
     model_size.set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log(f"seed {seed}, {scenario} {ratio}, {n_layers} layers: loading {args.model}")
+    log(f"seed {seed}, {scenario} {smell_pct}%, {n_layers} layers: loading {args.model}")
     base, tokenizer = args.load(args.model)
     model = model_size.build_classifier(base, n_layers, tokenizer.pad_token_id).to(device)
     pad_id = tokenizer.pad_token_id
 
-    all_train, test_rows = load_rows(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), ratio)
+    all_train, test_rows = load_rows(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), smell_pct)
     originals = [r for r in all_train if r["is_augmented"] == "0"]
     train_rows = all_train if scenario == "augment" else originals
     data_dir = args.comment_dir if args.representation == "comment" else args.nocomment_dir
@@ -159,7 +160,7 @@ def finetune(seed, scenario, ratio, n_layers, args):
     test = [(model_size.encode(tokenizer, c, args.max_len), int(r["label"]))
             for c, r in zip(read_code(test_rows, data_dir), test_rows)]
 
-    # Class weights give each class the weight of its rows at this ratio, extra rows included
+    # Class weights give each class the weight of its rows at this smelly share, extra rows included
     weights = [1.0, 1.0]
     if scenario == "weight":
         weights = [a / o for a, o in zip(class_counts(all_train), class_counts(originals))]
@@ -223,7 +224,7 @@ def finetune(seed, scenario, ratio, n_layers, args):
                       train, train_rows, test, test_rows)
 
     result = {
-        "seed": seed, "scenario": scenario, "ratio": ratio, "layers": n_layers, "stage": "end-to-end",
+        "seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers, "stage": "end-to-end",
         "train_clean": n_clean, "train_smell": n_smell,
         "weight_clean": round(weights[0], 4), "weight_smell": round(weights[1], 4),
         "params_total": sum(p.numel() for p in model.parameters()),
@@ -231,7 +232,7 @@ def finetune(seed, scenario, ratio, n_layers, args):
         **score_values(labels, preds), **cost_values(args, device, train_seconds, test_seconds, energy),
         **config_values(args),
     }
-    loss_rows = [{"seed": seed, "scenario": scenario, "ratio": ratio, "layers": n_layers,
+    loss_rows = [{"seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers,
                   "representation": args.representation, "stage": "end-to-end", "epoch": e,
                   "train_loss": round(l, 6)} for e, l in enumerate(losses_per_epoch, start=1)]
     return result, loss_rows
@@ -276,7 +277,7 @@ def smote_points(x, y, ids, extra_rows, k, seed):
         same = np.flatnonzero((y == y[i]) & (np.arange(len(y)) != i))
         distance = np.linalg.norm(x[same] - x[i], axis=1)
         neighbours = same[np.argsort(distance, kind="stable")[:k]]
-        # Seeded by the row, so the points made at 0.61 are made again at 1.0
+        # Seeded by the row, so the points made at 37.7% smelly are made again at 50%
         rng = np.random.default_rng(zlib.crc32(f"{seed}/{r['sample_id']}/{r['is_augmented']}".encode()))
         j = rng.choice(neighbours)
         points.append(x[i] + rng.random() * (x[j] - x[i]))
@@ -284,7 +285,7 @@ def smote_points(x, y, ids, extra_rows, k, seed):
     return np.array(points).reshape(-1, x.shape[1]), np.array(labels, dtype=y.dtype)
 
 
-def train_head(seed, scenario, ratio, n_layers, args):
+def train_head(seed, scenario, smell_pct, n_layers, args):
     """Head stage of smote and of its control: a fresh [CLS] head on frozen vectors."""
     import numpy as np
     import torch
@@ -293,13 +294,13 @@ def train_head(seed, scenario, ratio, n_layers, args):
 
     data = np.load(features_path(args, seed, n_layers))
     x, y, ids = data["train_x"], data["train_y"], list(data["train_ids"])
-    all_train, _ = load_rows(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), ratio)
+    all_train, _ = load_rows(os.path.join(args.dataset_dir, f"dataset_seed{seed}.csv"), smell_pct)
     extra_rows = [r for r in all_train if r["is_augmented"] != "0"]
     if scenario == "smote":
         sx, sy = smote_points(x, y, ids, extra_rows, args.smote_k, seed)
         x, y = np.concatenate([x, sx]), np.concatenate([y, sy])
     n_clean, n_smell = int((y == 0).sum()), int((y == 1).sum())
-    log(f"seed {seed}, {scenario} {ratio}, {n_layers} layers: head on {len(y)} vectors "
+    log(f"seed {seed}, {scenario} {smell_pct}%, {n_layers} layers: head on {len(y)} vectors "
         f"({n_clean} clean, {n_smell} smelly)")
 
     model_size.set_seed(seed)
@@ -353,7 +354,7 @@ def train_head(seed, scenario, ratio, n_layers, args):
     test_seconds = time.time() - start
 
     result = {
-        "seed": seed, "scenario": scenario, "ratio": ratio, "layers": n_layers, "stage": "head",
+        "seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers, "stage": "head",
         "train_clean": n_clean, "train_smell": n_smell, "weight_clean": 1.0, "weight_smell": 1.0,
         "params_total": sum(p.numel() for p in head.parameters()),
         "params_trainable": sum(p.numel() for p in head.parameters()),
@@ -361,7 +362,7 @@ def train_head(seed, scenario, ratio, n_layers, args):
         **cost_values(args, device, train_seconds, test_seconds, energy),
         **config_values(args),
     }
-    loss_rows = [{"seed": seed, "scenario": scenario, "ratio": ratio, "layers": n_layers,
+    loss_rows = [{"seed": seed, "scenario": scenario, "smell_pct": smell_pct, "layers": n_layers,
                   "representation": args.representation, "stage": "head", "epoch": e,
                   "train_loss": round(l, 6)} for e, l in enumerate(losses_per_epoch, start=1)]
     return result, loss_rows
@@ -392,17 +393,17 @@ def append_rows(path, columns, rows):
 
 
 def plan(args):
-    """(scenario, ratio, layers) runs per seed, none first."""
+    """(scenario, smell_pct, layers) runs per seed, none first."""
     runs = []
     for scenario in ORDER:
         if scenario not in args.scenarios:
             continue
-        for ratio in SCENARIOS[scenario]:
-            if args.ratios and ratio not in args.ratios:
+        for smell_pct in SCENARIOS[scenario]:
+            if args.smell_pcts and smell_pct not in args.smell_pcts:
                 continue
-            runs += [(scenario, ratio, n) for n in args.layers]
+            runs += [(scenario, smell_pct, n) for n in args.layers]
             if scenario == "none":
-                runs += [(scenario, ratio, n) for n in args.confirm_layers if n not in args.layers]
+                runs += [(scenario, smell_pct, n) for n in args.confirm_layers if n not in args.layers]
     return runs
 
 
@@ -410,8 +411,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seeds", type=int, nargs="*", default=list(range(10)))
     parser.add_argument("--scenarios", nargs="*", choices=ORDER, default=ORDER)
-    parser.add_argument("--ratios", nargs="*", choices=["0.38", "0.61", "1.0"], default=[],
-                        help="keep only these train ratios (default: all)")
+    parser.add_argument("--smell-pcts", nargs="*", choices=["27.5", "37.7", "50.0"], default=[],
+                        help="keep only these smelly shares (%) of the train side (default: all)")
     parser.add_argument("--layers", type=int, nargs="*", default=[4], help="encoder layers kept, every scenario")
     parser.add_argument("--confirm-layers", type=int, nargs="*", default=[12],
                         help="extra layer counts run for the none scenario only")
@@ -459,29 +460,29 @@ def main():
 
 def run_all(args):
     import torch
-    done = {(r["seed"], r["scenario"], r["ratio"], r["layers"])
+    done = {(r["seed"], r["scenario"], r["smell_pct"], r["layers"])
             for r in model_size.read_results(args.out) if same_config(r, args)}
     for seed in args.seeds:
-        for scenario, ratio, n_layers in plan(args):
-            key = (str(seed), scenario, ratio, str(n_layers))
+        for scenario, smell_pct, n_layers in plan(args):
+            key = (str(seed), scenario, smell_pct, str(n_layers))
             if key in done:
-                log(f"[skip] seed {seed}, {scenario} {ratio}, {n_layers} layers: already in {args.out}")
+                log(f"[skip] seed {seed}, {scenario} {smell_pct}%, {n_layers} layers: already in {args.out}")
                 continue
             if scenario in ("smote", "head") and not os.path.exists(features_path(args, seed, n_layers)):
                 # Train the none model for its vectors; when its row is already recorded (the
                 # vectors were deleted), keep that row
                 log(f"seed {seed}: no [CLS] vectors at {features_path(args, seed, n_layers)}, "
                     f"training the none model again to make them")
-                result, loss_rows = finetune(seed, "none", "0.38", n_layers, args)
-                none_key = (str(seed), "none", "0.38", str(n_layers))
+                result, loss_rows = finetune(seed, "none", "27.5", n_layers, args)
+                none_key = (str(seed), "none", "27.5", str(n_layers))
                 if none_key not in done:
                     append_rows(args.out, RESULT_COLUMNS, [result])
                     append_rows(args.loss_out, LOSS_COLUMNS, loss_rows)
                     done.add(none_key)
             if scenario in ("smote", "head"):
-                result, loss_rows = train_head(seed, scenario, ratio, n_layers, args)
+                result, loss_rows = train_head(seed, scenario, smell_pct, n_layers, args)
             else:
-                result, loss_rows = finetune(seed, scenario, ratio, n_layers, args)
+                result, loss_rows = finetune(seed, scenario, smell_pct, n_layers, args)
             # Hand the finished model's GPU memory back before the next run
             gc.collect()
             if torch.cuda.is_available():
@@ -489,7 +490,7 @@ def run_all(args):
             append_rows(args.out, RESULT_COLUMNS, [result])
             append_rows(args.loss_out, LOSS_COLUMNS, loss_rows)
             done.add(key)
-            log(f"seed {seed}, {scenario} {ratio}, {n_layers} layers: precision {result['precision']:.3f}, "
+            log(f"seed {seed}, {scenario} {smell_pct}%, {n_layers} layers: precision {result['precision']:.3f}, "
                 f"F1 {result['f1']:.3f}, MCC {result['mcc']:.3f}, {result['train_seconds']}s")
     print(f"-> {args.out}, {args.loss_out}")
 

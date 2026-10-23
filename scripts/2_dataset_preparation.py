@@ -10,6 +10,19 @@ projects left out) and, per seed:
     the extra sample is made; class weighting uses the same proportions
   - one augmentation variant per selected method, drawn from the operators
     whose variant is valid in augmented_pool.csv
+  - the extra smelly samples that raise the train ratio further to 1:1. They
+    nest on top of the ones above: each smelly method gets one more distinct
+    variant in random order, round after round, until smelly matches clean
+    (every smelly method ends with 2 or 3 extra samples); a method with no
+    variant left passes its turn to the next one
+
+Column ratio says from which train smelly:clean ratio on a row is used: 0.38
+for the original train methods (no balancing), 0.61 for the first extra sample
+and 1.0 for the further ones, so the train set at ratio r is every train row
+with ratio <= r. Test rows have no ratio. Each extra row stands for one extra
+sample of its source method whatever the balancing method: augmentation trains
+on the variant's code, SMOTE makes one synthetic point from the source method,
+and class weighting counts the rows per class.
 
 The test side holds original code only. A file is found at
 ds_comment/<is_augmented>/<filename> or ds_nocomment/<is_augmented>/<filename>.
@@ -30,7 +43,7 @@ from collections import Counter, defaultdict
 analysis = importlib.import_module("0_dataset_analysis")
 
 COLUMNS = ["seed", "sample_id", "group_id", "project", "filename", "label", "is_augmented",
-           "split", "selected", "length_bin", "tok_with_comments", "tok_no_comments"]
+           "split", "selected", "ratio", "length_bin", "tok_with_comments", "tok_no_comments"]
 
 
 def load_originals(tokens_path, fit_col, exclude_projects, code_dir):
@@ -102,11 +115,12 @@ def split_test(rows, test_frac, rng):
     return test
 
 
-def build(seed, originals, variants, test_frac, clean_frac):
+def build(seed, originals, variants, test_frac, clean_frac, top_ratio):
     # Separate streams, so changing one step does not reshuffle the others
     split_rng = random.Random(f"{seed}/split")
     select_rng = random.Random(f"{seed}/select")
     variant_rng = random.Random(f"{seed}/variant")
+    top_rng = random.Random(f"{seed}/top")
 
     test_groups = split_test(originals, test_frac, split_rng)
     train = [r for r in originals if r["group_id"] not in test_groups]
@@ -117,6 +131,37 @@ def build(seed, originals, variants, test_frac, clean_frac):
                    key=lambda r: r["sample_id"])
     n_clean = round(clean_frac * sum(r["label"] == "0" for r in train))
     selected = {r["sample_id"] for r in smelly} | {r["sample_id"] for r in select_rng.sample(clean, n_clean)}
+    first = {}
+    for r in sorted(originals, key=lambda r: r["sample_id"]):
+        if r["sample_id"] in selected:
+            first[r["sample_id"]] = variant_rng.choice(sorted(variants[r["sample_id"]], key=lambda v: int(v["op_id"])))
+
+    # Labels of the three train ratios, e.g. 0.38, 0.61 and 1.0
+    n_clean_train = sum(r["label"] == "0" for r in train) + sum(r["label"] == "0" for r in train
+                                                                 if r["sample_id"] in selected)
+    n_smell_train = sum(r["label"] == "1" for r in train)
+    base_ratio = round(n_smell_train / sum(r["label"] == "0" for r in train), 2)
+    mid_ratio = round((n_smell_train + len(smelly)) / n_clean_train, 2)
+
+    # Further distinct variants for the smelly methods, one per method per round in a random
+    # order, until smelly matches top_ratio x clean; the clean side stays as at mid_ratio
+    spare = {}
+    for r in sorted(smelly, key=lambda r: r["sample_id"]):
+        rest = sorted((v for v in variants[r["sample_id"]] if v["op_id"] != first[r["sample_id"]]["op_id"]),
+                      key=lambda v: int(v["op_id"]))
+        top_rng.shuffle(rest)
+        spare[r["sample_id"]] = rest
+    needed = round(top_ratio * n_clean_train) - n_smell_train - len(smelly)
+    order = sorted(spare)
+    top_rng.shuffle(order)
+    extra = defaultdict(list)
+    while needed > 0:
+        takers = [sid for sid in order if spare[sid]]
+        if not takers:
+            raise SystemExit(f"seed {seed}: not enough valid variants to reach ratio {top_ratio}")
+        for sid in takers[:needed]:
+            extra[sid].append(spare[sid].pop())
+        needed -= len(takers[:needed])
 
     out = []
     for r in sorted(originals, key=lambda r: r["sample_id"]):
@@ -124,21 +169,26 @@ def build(seed, originals, variants, test_frac, clean_frac):
                 "filename": r["filename"], "label": r["label"], "length_bin": r["length_bin"]}
         is_train = r["group_id"] not in test_groups
         out.append({**base, "is_augmented": 0, "split": "train" if is_train else "test",
-                    "selected": int(r["sample_id"] in selected),
+                    "selected": int(r["sample_id"] in selected), "ratio": base_ratio if is_train else "",
                     "tok_with_comments": r["tok_with_comments"], "tok_no_comments": r["tok_no_comments"]})
         if r["sample_id"] in selected:
-            v = variant_rng.choice(sorted(variants[r["sample_id"]], key=lambda v: int(v["op_id"])))
-            out.append({**base, "is_augmented": int(v["op_id"]), "split": "train", "selected": 0,
-                        "tok_with_comments": v["tok_with_comments"], "tok_no_comments": v["tok_no_comments"]})
+            vs = [(first[r["sample_id"]], mid_ratio)] + [(v, top_ratio) for v in extra[r["sample_id"]]]
+            for v, ratio in vs:
+                out.append({**base, "is_augmented": int(v["op_id"]), "split": "train", "selected": 0,
+                            "ratio": ratio,
+                            "tok_with_comments": v["tok_with_comments"], "tok_no_comments": v["tok_no_comments"]})
     return out
 
 
 def summarize(seed, rows):
-    def count(split, label, augmented):
+    ratios = sorted({r["ratio"] for r in rows if r["ratio"] != ""})
+
+    def count(split, label, augmented, up_to=ratios[1]):
         return sum(r["split"] == split and r["label"] == label and (r["is_augmented"] > 0) == augmented
-                   for r in rows)
+                   and (split == "test" or r["ratio"] <= up_to) for r in rows)
     train_clean, train_smell = count("train", "0", False), count("train", "1", False)
     aug_clean, aug_smell = count("train", "0", True), count("train", "1", True)
+    top_clean, top_smell = count("train", "0", True, ratios[2]), count("train", "1", True, ratios[2])
     return {
         "seed": seed,
         "test_clean": count("test", "0", False), "test_smell": count("test", "1", False),
@@ -146,6 +196,8 @@ def summarize(seed, rows):
         "added_clean": aug_clean, "added_smell": aug_smell,
         "ratio_before": round(train_smell / train_clean, 3),
         "ratio_after": round((train_smell + aug_smell) / (train_clean + aug_clean), 3),
+        "added_clean_top": top_clean, "added_smell_top": top_smell,
+        "ratio_top": round((train_smell + top_smell) / (train_clean + top_clean), 3),
         "operators_used": len({r["is_augmented"] for r in rows if r["is_augmented"] > 0}),
     }
 
@@ -169,6 +221,8 @@ def main():
     parser.add_argument("--test-frac", type=float, default=0.2)
     parser.add_argument("--clean-frac", type=float, default=0.25,
                         help="share of the clean train methods that get an extra sample")
+    parser.add_argument("--top-ratio", type=float, default=1.0,
+                        help="smelly:clean train ratio reached by the further smelly samples")
     parser.add_argument("--out-dir", default="datasets")
     args = parser.parse_args()
 
@@ -180,7 +234,7 @@ def main():
 
     summaries, strata, tested = [], Counter(), Counter()
     for seed in args.seeds:
-        rows = build(seed, originals, variants, args.test_frac, args.clean_frac)
+        rows = build(seed, originals, variants, args.test_frac, args.clean_frac, args.top_ratio)
         write_csv(os.path.join(args.out_dir, f"dataset_seed{seed}.csv"), [{c: r[c] for c in COLUMNS} for r in rows])
         summaries.append(summarize(seed, rows))
         for r in rows:

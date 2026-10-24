@@ -3,16 +3,16 @@
 Reads results/main_experiment.csv and results/main_loss.csv written by
 4_main_experiment.py and draws, for one representation (comment by default):
 
-  figures/figure6a_main_precision_by_share.png    precision against the smelly share of the train side
-  figures/figure6b_main_f1_by_share.png           F1-score against the smelly share of the train side
-  figures/figure7a_main_precision_scenarios.png   precision of every scenario, one dot per seed
-  figures/figure7b_main_f1_scenarios.png          F1-score of every scenario, one dot per seed
-  figures/figure9_main_cost.png                   F1-score against training time per scenario
-  figures/extra_main_loss.png                     train loss per epoch of the 4- and 12-layer none runs
+  figures/figure9a_main_precision_by_share.png     precision against the smelly share of the train side
+  figures/figure9b_main_f1_by_share.png            F1-score against the smelly share of the train side
+  figures/figure10a_main_precision_scenarios.png   precision of every scenario, one dot per seed
+  figures/figure10b_main_f1_scenarios.png          F1-score of every scenario, one dot per seed
+  figures/figure12_main_cost.png                   F1-score against training time per scenario
+  figures/figure8_main_loss.png                    train loss per epoch of the 4- and 12-layer none runs
 
-The number is that of the figure in the paper draft (extra_ when the draft does
-not number it yet); main_ after it marks a figure of this script, as dataset_
-and model_size_ mark those of 0_dataset_analysis.py and 3_model_size.py.
+The number is that of the figure in the paper draft; main_ after it marks a
+figure of this script, as dataset_, augment_ and model_size_ mark those of
+0_dataset_analysis.py, 1_dataset_augmentation.py and 3_model_size.py.
 
 Each figure carries a short title; what it shows in detail is written in the
 docstring of the function that draws it. Precision, recall and F1 are those of
@@ -229,12 +229,12 @@ def main():
     rows = [r for r in read(args.results) if r["representation"] == args.representation]
     loss_rows = [r for r in read(args.loss) if r["representation"] == args.representation]
     out = lambda name: os.path.join(args.figures_dir, f"{name}{args.suffix}.png")
-    plot_by_share(rows, "precision", "Precision", out("figure6a_main_precision_by_share"))
-    plot_by_share(rows, "f1", "F1-score", out("figure6b_main_f1_by_share"))
-    plot_scenarios(rows, "precision", "Precision", out("figure7a_main_precision_scenarios"))
-    plot_scenarios(rows, "f1", "F1-score", out("figure7b_main_f1_scenarios"))
-    plot_cost(rows, out("figure9_main_cost"))
-    plot_loss(loss_rows, out("extra_main_loss"))
+    plot_by_share(rows, "precision", "Precision", out("figure9a_main_precision_by_share"))
+    plot_by_share(rows, "f1", "F1-score", out("figure9b_main_f1_by_share"))
+    plot_scenarios(rows, "precision", "Precision", out("figure10a_main_precision_scenarios"))
+    plot_scenarios(rows, "f1", "F1-score", out("figure10b_main_f1_scenarios"))
+    plot_cost(rows, out("figure12_main_cost"))
+    plot_loss(loss_rows, out("figure8_main_loss"))
 
 
 if __name__ == "__main__":

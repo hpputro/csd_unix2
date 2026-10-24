@@ -8,6 +8,8 @@ Reads the methods listed in switch_statements.csv from ds_comment/0 and writes
   - augmented_pool_summary.csv: status counts per operator for three subsets:
     all methods, and the clean and smelly methods used in the experiment
     (fit UniXcoder's input, excluded projects left out)
+  - figures/extra_augment_operators.png: share of valid variants per operator
+    for the clean and smelly methods of the experiment
 
 Operator numbers follow the toolkit order (a-n in demo_refactor_java.py).
 A variant is written only when its status is "ok": the operator changed the
@@ -21,7 +23,7 @@ Usage:
     pip install --use-pep517 wordninja
     python -m nltk.downloader wordnet
     python scripts/1_dataset_augmentation.py
-    python scripts/1_dataset_augmentation.py --summary-only   # summaries from the existing pool
+    python scripts/1_dataset_augmentation.py --summary-only   # summaries and figure from the existing pool
 """
 import argparse
 import contextlib
@@ -155,6 +157,47 @@ def save_and_print(tables, out):
     print(f"-> {out}")
 
 
+def plot_operators(clean, smell, out):
+    """Share of valid variants (changed, parses, fits the input in both representations) out of
+    the methods tried, per operator, for the 254 clean and 96 smelly methods of the experiment;
+    operators sorted by their smelly share, the number at each bar end is that share in percent.
+    It shows as a figure what Table 4 of the draft lists."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
+    share = lambda r: 100 * int(r["ok"]) / int(r["total"])
+    clean = {r["operator"]: share(r) for r in clean if r["op_id"] != ""}
+    smell = {r["operator"]: share(r) for r in smell if r["op_id"] != ""}
+    names = sorted(smell, key=lambda n: (smell[n], clean[n]))
+    fig, ax = plt.subplots(figsize=(6.6, 5.0))
+    y = range(len(names))
+    for offset, values, color, label in ((0.2, smell, analysis.SMELL_COLOR, "Smell"),
+                                         (-0.2, clean, analysis.CLEAN_COLOR, "Clean")):
+        ax.barh([i + offset for i in y], [values[n] for n in names], height=0.38, color=color, label=label,
+                edgecolor="white", linewidth=1)
+        for i, n in enumerate(names):
+            # One decimal below 1% so a rare valid variant does not read as none
+            text = f"{values[n]:.1f}" if 0 < values[n] < 1 else f"{values[n]:.0f}"
+            ax.text(values[n] + 1, i + offset, text, va="center", fontsize=7.5, color=analysis.MUTED)
+    ax.set_yticks(list(y), names)
+    ax.set_xlim(0, 108)
+    ax.set_xlabel("Valid variants (% of methods tried)", color=analysis.MUTED)
+    ax.set_title("Valid variants per operator", loc="left", fontsize=10.5, color=analysis.INK)
+    ax.legend(frameon=False, fontsize=9, loc="lower right")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.spines[["left", "bottom"]].set_color(analysis.GRID)
+    ax.tick_params(colors=analysis.MUTED, labelsize=8.5)
+    ax.grid(axis="x", color=analysis.GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    fig.tight_layout()
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    fig.savefig(out, dpi=300)
+    plt.close(fig)
+    print(f"-> {out}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--csv", default="switch_statements.csv")
@@ -168,6 +211,7 @@ def main():
     parser.add_argument("--tokens", default="token_counts.csv")
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--exclude-projects", nargs="*", default=["trove-2.1.0"])
+    parser.add_argument("--figure", default="figures/extra_augment_operators.png")
     parser.add_argument("--summary-only", action="store_true",
                         help="rebuild the summaries from the existing pool without augmenting")
     args = parser.parse_args()
@@ -181,11 +225,10 @@ def main():
     with open(args.tokens, newline="", encoding="utf-8") as f:
         fit = {r["sample_id"] for r in csv.DictReader(f) if r[args.fit_col] == "1"}
     experiment = [r for r in records if r["sample_id"] in fit and r["project"] not in args.exclude_projects]
-    save_and_print([
-        summarize("all", records),
-        summarize("experiment_clean", [r for r in experiment if str(r["label"]) == "0"]),
-        summarize("experiment_smell", [r for r in experiment if str(r["label"]) == "1"]),
-    ], args.summary)
+    clean = summarize("experiment_clean", [r for r in experiment if str(r["label"]) == "0"])
+    smell = summarize("experiment_smell", [r for r in experiment if str(r["label"]) == "1"])
+    save_and_print([summarize("all", records), clean, smell], args.summary)
+    plot_operators(clean, smell, args.figure)
 
 
 def augment(args):

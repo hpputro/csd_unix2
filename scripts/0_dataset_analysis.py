@@ -7,9 +7,8 @@ to either input representation. UniXcoder wraps the code as
 
 Step 2 keeps the samples that fit UniXcoder's input and writes:
   - dataset_stats.csv: per-project counts, smell share and token sizes
-  - figures/extra_dataset_projects.png: class balance per project (not numbered in
-    the paper: it repeats Table 2)
-  - figures/figure2_dataset_length.png: token length per class (Figure 2)
+  - figures/figure2_dataset_projects.png: class balance per project (Figure 2)
+  - figures/figure3_dataset_length.png: token length per class (Figure 3)
 
 Usage:
     pip install transformers matplotlib
@@ -242,8 +241,8 @@ def main():
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--exclude-projects", nargs="*", default=[])
     parser.add_argument("--out", default="dataset_stats.csv")
-    parser.add_argument("--figure-projects", default="figures/extra_dataset_projects.png")
-    parser.add_argument("--figure-length", default="figures/figure2_dataset_length.png")
+    parser.add_argument("--figure-projects", default="figures/figure2_dataset_projects.png")
+    parser.add_argument("--figure-length", default="figures/figure3_dataset_length.png")
     args = parser.parse_args()
     budget = args.max_len - SPECIAL_TOKENS
 

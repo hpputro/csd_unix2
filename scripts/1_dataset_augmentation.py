@@ -8,8 +8,8 @@ Reads the methods listed in switch_statements.csv from ds_comment/0 and writes
   - augmented_pool_summary.csv: status counts per operator for three subsets:
     all methods, and the clean and smelly methods used in the experiment
     (fit UniXcoder's input, excluded projects left out)
-  - figures/extra_augment_operators.png: share of valid variants per operator
-    for the clean and smelly methods of the experiment
+  - figures/figure4_augment_operators.png: share of valid variants per operator
+    for the clean and smelly methods of the experiment (Figure 4)
 
 Operator numbers follow the toolkit order (a-n in demo_refactor_java.py).
 A variant is written only when its status is "ok": the operator changed the
@@ -211,7 +211,7 @@ def main():
     parser.add_argument("--tokens", default="token_counts.csv")
     parser.add_argument("--fit-col", default="fits_with_comments")
     parser.add_argument("--exclude-projects", nargs="*", default=["trove-2.1.0"])
-    parser.add_argument("--figure", default="figures/extra_augment_operators.png")
+    parser.add_argument("--figure", default="figures/figure4_augment_operators.png")
     parser.add_argument("--summary-only", action="store_true",
                         help="rebuild the summaries from the existing pool without augmenting")
     args = parser.parse_args()

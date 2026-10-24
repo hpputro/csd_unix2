@@ -7,9 +7,10 @@ appends one row to results/model_size.csv (finished runs are skipped on a
 rerun) and the mean train loss of every epoch to results/model_size_loss.csv,
 to see whether the larger models memorise the train split. Two figures plot,
 against the parameter count, accuracy and F1-score
-(figures/model_size_scores.png) and fine-tuning time and, when measured,
-energy (figures/model_size_cost.png); a third plots the train loss per epoch
-of a few sizes (figures/model_size_loss.png).
+(figures/figure3_model_size_scores.png, Figure 3) and fine-tuning time and,
+when measured, energy (figures/figure4_model_size_cost.png, Figure 4); a third
+plots the train loss per epoch of a few sizes
+(figures/figure5_model_size_loss.png, Figure 5).
 
 Model and training follow the configuration tuned in Putro et al. (2026,
 IEEE Access): AutoModelForSequenceClassification with its [CLS] classification
@@ -444,9 +445,9 @@ def main():
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
     parser.add_argument("--out", default="results/model_size.csv")
     parser.add_argument("--loss-out", default="results/model_size_loss.csv")
-    parser.add_argument("--figure-scores", default="figures/model_size_scores.png")
-    parser.add_argument("--figure-cost", default="figures/model_size_cost.png")
-    parser.add_argument("--figure-loss", default="figures/model_size_loss.png")
+    parser.add_argument("--figure-scores", default="figures/figure3_model_size_scores.png")
+    parser.add_argument("--figure-cost", default="figures/figure4_model_size_cost.png")
+    parser.add_argument("--figure-loss", default="figures/figure5_model_size_loss.png")
     parser.add_argument("--loss-layers", type=int, nargs="*", default=[12, 4, 1],
                         help="layer counts drawn in the loss figure")
     parser.add_argument("--allow-cpu", action="store_true",

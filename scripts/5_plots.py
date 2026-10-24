@@ -3,12 +3,15 @@
 Reads results/main_experiment.csv and results/main_loss.csv written by
 4_main_experiment.py and draws, for one representation (comment by default):
 
-  figures/main_precision_by_share.png   precision against the smelly share of the train side
-  figures/main_f1_by_share.png          F1-score against the smelly share of the train side
-  figures/main_f1_scenarios.png         F1-score of every scenario, one dot per seed
-  figures/main_precision_scenarios.png  precision of every scenario, one dot per seed
-  figures/main_cost.png                 F1-score against training time per scenario
-  figures/main_loss.png                 train loss per epoch of the 4- and 12-layer none runs
+  figures/figure6a_precision_by_share.png    precision against the smelly share of the train side
+  figures/figure6b_f1_by_share.png           F1-score against the smelly share of the train side
+  figures/figure7a_precision_scenarios.png   precision of every scenario, one dot per seed
+  figures/figure7b_f1_scenarios.png          F1-score of every scenario, one dot per seed
+  figures/figure9_cost.png                   F1-score against training time per scenario
+  figures/extra_main_loss.png                train loss per epoch of the 4- and 12-layer none runs
+
+The number is that of the figure in the paper draft; extra_ marks a figure the
+draft does not number (yet).
 
 Each figure carries a short title; what it shows in detail is written in the
 docstring of the function that draws it. Precision, recall and F1 are those of
@@ -17,7 +20,7 @@ the smelly class.
 Usage:
     pip install matplotlib
     python scripts/5_plots.py
-    python scripts/5_plots.py --representation nocomment --prefix main_nocomment
+    python scripts/5_plots.py --representation nocomment --suffix _nocomment
 """
 import argparse
 import csv
@@ -219,18 +222,18 @@ def main():
     parser.add_argument("--loss", default="results/main_loss.csv")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--figures-dir", default="figures")
-    parser.add_argument("--prefix", default="main", help="file name prefix of the figures")
+    parser.add_argument("--suffix", default="", help="added to every file name, e.g. _nocomment")
     args = parser.parse_args()
 
     rows = [r for r in read(args.results) if r["representation"] == args.representation]
     loss_rows = [r for r in read(args.loss) if r["representation"] == args.representation]
-    out = lambda name: os.path.join(args.figures_dir, f"{args.prefix}_{name}.png")
-    plot_by_share(rows, "precision", "Precision", out("precision_by_share"))
-    plot_by_share(rows, "f1", "F1-score", out("f1_by_share"))
-    plot_scenarios(rows, "f1", "F1-score", out("f1_scenarios"))
-    plot_scenarios(rows, "precision", "Precision", out("precision_scenarios"))
-    plot_cost(rows, out("cost"))
-    plot_loss(loss_rows, out("loss"))
+    out = lambda name: os.path.join(args.figures_dir, f"{name}{args.suffix}.png")
+    plot_by_share(rows, "precision", "Precision", out("figure6a_precision_by_share"))
+    plot_by_share(rows, "f1", "F1-score", out("figure6b_f1_by_share"))
+    plot_scenarios(rows, "precision", "Precision", out("figure7a_precision_scenarios"))
+    plot_scenarios(rows, "f1", "F1-score", out("figure7b_f1_scenarios"))
+    plot_cost(rows, out("figure9_cost"))
+    plot_loss(loss_rows, out("extra_main_loss"))
 
 
 if __name__ == "__main__":

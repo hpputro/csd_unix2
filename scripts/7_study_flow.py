@@ -1,16 +1,16 @@
-"""Figure 1 of the paper: the study in five steps, with the counts taken from the data files.
+"""Figure 1 of the paper: the study at a glance, with the counts taken from the data files.
 
 Draws figures/figure1_study_flow.png from switch_statements.csv (the methods
-of Fontana's dataset that have a body), token_counts.csv (methods with a body and their token counts) and
-datasets/dataset_seed0.csv (one Monte Carlo
-split; every seed has the same counts):
-
-  1 Dataset      Fontana's Switch Statements methods and the filters down to the 350 kept
-  2 Split        Monte Carlo cross-validation, train and test sizes
-  3 Input        code with comments (the RQ3 ablation removes them), UniXcoder format
-  4 Balancing    the smelly share of the train side and the methods applied at each share,
-                 with the train set size; this replaces a table of the scenarios
-  5 Model        UniXcoder kept to 4 encoder layers, and the reported metrics
+of Fontana's dataset that have a body), token_counts.csv (their token counts)
+and datasets/dataset_seed0.csv (one Monte Carlo split; every seed has the same
+counts). Top row: dataset and filter, Monte Carlo split, input representation.
+The training split then goes through balancing (no balancing at the natural
+27.5% smelly; class weighting, augmentation and SMOTE at 37.7% and 50%, with
+the train set size of each share, which replaces a table of the scenarios)
+into UniXcoder kept to 4 encoder layers; the test split goes to the model as
+original code (dashed line). The model-size ablation (seeds 42-44) feeds the
+choice of 4 layers. Energy is not listed for the model: only the ablation
+measured it.
 
 Usage:
     pip install matplotlib
@@ -28,6 +28,8 @@ FILL = "#f6f5f2"
 # from the 404 that have a method body (the 16 without one are all clean)
 FONTANA_METHODS = 420
 METHODS = [("Class weighting", "#2a78d6"), ("Augmentation", "#eb6834"), ("SMOTE", "#1baf7a")]
+# Light tints of the method colors, from the editor's cell palette, for the method boxes
+TINTS = {"Class weighting": "#e7f1fb", "Augmentation": "#f9ece7", "SMOTE": "#e5f4e4"}
 
 
 def read(path):
@@ -60,85 +62,95 @@ def counts(source_path, tokens_path, dataset_path, fit_col, exclude):
 
 
 def draw(c, out):
+    """Three steps on top lead into the balancing of the training split (solid lines) and,
+    for the test split, straight to the model (dashed: original code, never balanced); the
+    model-size ablation feeds the choice of four encoder layers."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import FancyBboxPatch
 
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["DejaVu Sans"]})
-    fig = plt.figure(figsize=(7.2, 4.9))
+    fig = plt.figure(figsize=(7.2, 5.0))
     ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, 100)
-    ax.set_ylim(0, 68)
+    ax.set_ylim(0, 70)
     ax.axis("off")
 
-    def box(x, y, w, h, number, title, lines):
+    def box(x, y, w, h, title, lines, fill=FILL, edge=GRID, size=9):
         ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0,rounding_size=1.2",
-                                    facecolor=FILL, edgecolor=GRID, linewidth=1))
-        ax.text(x + 2, y + h - 3, f"{number}  {title}", fontsize=9, fontweight="bold", color=INK, va="top")
-        for i, line in enumerate(lines):
-            ax.text(x + 2, y + h - 8.2 - i * 3.7, line, fontsize=7.6, color=MUTED, va="top")
+                                    facecolor=fill, edgecolor=edge, linewidth=1))
+        top = y + h / 2 + 1.9 * len(lines)
+        ax.text(x + w / 2, top, title, ha="center", va="center", fontsize=size, fontweight="bold", color=INK)
+        for i, line in enumerate(lines, start=1):
+            ax.text(x + w / 2, top - 3.9 * i, line, ha="center", va="center", fontsize=7.5, color=MUTED)
 
-    def arrow(x0, y0, x1, y1):
-        ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
-                    arrowprops=dict(arrowstyle="-|>", color=MUTED, linewidth=1.2, shrinkA=0, shrinkB=0))
+    def line(points, dashed=False, head=True):
+        xs, ys = zip(*points)
+        ax.plot(xs[:-1] + (xs[-1],), ys, color=MUTED, linewidth=1.1, linestyle=(0, (4, 3)) if dashed else "-")
+        if head:
+            # Only the last stretch carries the arrowhead, so a dashed line stays dashed
+            (x0, y0), (x1, y1) = points[-2], points[-1]
+            length = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+            ax.annotate("", xy=(x1, y1), xytext=(x1 - (x1 - x0) * 1.5 / length, y1 - (y1 - y0) * 1.5 / length),
+                        arrowprops=dict(arrowstyle="-|>", color=MUTED, linewidth=1.1, shrinkA=0, shrinkB=0))
 
-    # Top row: dataset, split, input
-    top, h = 37, 30
-    box(1, top, 31, h, 1, "Dataset", [
-        f"{c['source']} Java methods, Fontana et al.",
-        f"{c['with_body']} with a method body",
-        f"{c['fit']} within 1,020 tokens",
-        f"{c['kept']} without {c['excluded']}:",
-        f"{c['kept_clean']} clean, {c['kept_smell']} smelly",
+    # Top row: data, split, input
+    top, h = 55, 13
+    box(2, top, 30, h, "Dataset and filter", [
+        f"Fontana et al., {c['source']} methods",
+        f"{c['kept']} kept ({c['kept_smell']} smelly)",
     ])
-    box(35, top, 30, h, 2, "Split", [
-        "Monte Carlo, seeds 0-9",
-        "stratified by label, project",
-        "and length",
-        f"train {c['train']} ({c['train_smell']} smelly)",
-        f"test {c['test']} ({c['test_smell']} smelly), original code",
+    box(35, top, 30, h, "Monte Carlo split", [
+        "10 seeds, stratified",
+        f"train {c['train']} \u00b7 test {c['test']} ({c['test_smell']} smelly)",
     ])
-    box(68, top, 31, h, 3, "Input", [
+    box(68, top, 30, h, "Input representation", [
         "code with comments",
-        "(RQ3: without comments)",
-        "whitespace collapsed,",
-        "UniXcoder encoder-only format",
+        "without comments (RQ3)",
     ])
-    arrow(32, top + h / 2, 35, top + h / 2)
-    arrow(65, top + h / 2, 68, top + h / 2)
+    line([(32, top + h / 2), (35, top + h / 2)])
+    line([(65, top + h / 2), (68, top + h / 2)])
 
-    # Bottom row: balancing (train side only), model and evaluation
-    bottom, hb = 1, 32
-    ax.add_patch(FancyBboxPatch((1, bottom), 64, hb, boxstyle="round,pad=0,rounding_size=1.2",
+    # Balancing of the training split, with the three methods
+    bx, by, bw, bh = 2, 16, 63, 30
+    ax.add_patch(FancyBboxPatch((bx, by), bw, bh, boxstyle="round,pad=0,rounding_size=1.2",
                                 facecolor=FILL, edgecolor=GRID, linewidth=1))
-    ax.text(3, bottom + hb - 3, "4  Balancing (train side only)", fontsize=9, fontweight="bold", color=INK,
-            va="top")
     shares = sorted(c["shares"].items())
-    for i, (pct, (clean, smell)) in enumerate(shares):
-        x = 3 + i * 21
-        ax.text(x, bottom + hb - 9, f"{pct:g}% smelly", fontsize=8.5, fontweight="bold", color=INK, va="top")
-        ax.text(x, bottom + hb - 13.5, f"{clean} clean + {smell} smelly", fontsize=7.6, color=MUTED, va="top")
-        if i == 0:
-            ax.text(x, bottom + hb - 18.5, "no balancing", fontsize=7.6, color=INK, va="top")
-        else:
-            for j, (name, color) in enumerate(METHODS):
-                yy = bottom + hb - 18.5 - j * 4
-                ax.add_patch(plt.Rectangle((x, yy - 2.3), 1.8, 2.0, color=color))
-                ax.text(x + 2.8, yy, name, fontsize=7.6, color=INK, va="top")
-    # Under the no-balancing column, the only one with room below its text
-    ax.text(3, bottom + 5.6, "test side keeps its", fontsize=7.2, color=MUTED)
-    ax.text(3, bottom + 2.2, "natural 27.1% smelly", fontsize=7.2, color=MUTED)
-    box(68, bottom, 31, hb, 5, "Model and evaluation", [
-        "UniXcoder, bottom 4 of 12",
-        "encoder layers, [CLS] head",
-        "20 epochs, last epoch scored",
-        "precision (main), recall, F1,",
-        "MCC of the smelly class",
-        "training time per run",
+    (base, (base_clean, base_smell)), rest = shares[0], shares[1:]
+    ax.text(bx + bw / 2, by + bh - 4, "Balancing (training split only)", ha="center", va="center",
+            fontsize=9, fontweight="bold", color=INK)
+    ax.text(bx + bw / 2, by + bh - 8.3, f"no balancing: {base:g}% smelly ({base_clean} clean + {base_smell} smelly)",
+            ha="center", va="center", fontsize=7.5, color=MUTED)
+    ax.text(bx + bw / 2, by + bh - 11.8, "each method: " + " and ".join(f"{p:g}% ({cl} + {sm})" for p, (cl, sm) in rest),
+            ha="center", va="center", fontsize=7.5, color=MUTED)
+    details = {"Class weighting": ["weighted", "cross-entropy"], "Augmentation": ["14 refactoring", "operators"],
+               "SMOTE": ["on [CLS] vectors,", "head retrained"]}
+    for i, (name, color) in enumerate(METHODS):
+        x = bx + 2 + i * 20
+        box(x, by + 2, 19, 12.5, name, details[name], fill=TINTS[name], edge=color, size=8.5)
+
+    # Model, fed by the balanced training split and by the original test split
+    mx, my, mw, mh = 68, 16, 30, 30
+    box(mx, my, mw, mh, "UniXcoder, 4 layers", [
+        "[CLS] head, last of 20 epochs",
+        "precision, recall, F1, MCC",
+        "training time",
+        "RQ1a, RQ1b, RQ2, RQ3",
     ])
-    arrow(83.5, top, 33, bottom + hb)
-    arrow(65, bottom + hb / 2, 68, bottom + hb / 2)
+    line([(83, top), (83, 50.5), (33.5, 50.5), (33.5, by + bh)])
+    line([(93, top), (93, my + mh)], dashed=True)
+    line([(bx + bw, by + bh / 2), (mx, by + bh / 2)])
+
+    # Model-size ablation, which chose the four layers
+    box(68, 1.5, 30, 10.5, "Model-size ablation", ["seeds 42-44, 12 to 0 layers"], size=8.5)
+    line([(83, 12), (83, my)])
+
+    # Legend
+    ax.plot([2, 7], [6.5, 6.5], color=MUTED, linewidth=1.1)
+    ax.text(8.5, 6.5, "training split", va="center", fontsize=7.5, color=MUTED)
+    ax.plot([2, 7], [2.5, 2.5], color=MUTED, linewidth=1.1, linestyle=(0, (4, 3)))
+    ax.text(8.5, 2.5, "test split (original code, never balanced)", va="center", fontsize=7.5, color=MUTED)
 
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     fig.savefig(out, dpi=300)

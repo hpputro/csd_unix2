@@ -99,52 +99,53 @@ def draw(c, out):
     top, h = 55, 13
     box(2, top, 30, h, "Dataset and filter", [
         f"Fontana et al., {c['source']} methods",
-        f"{c['kept']} kept ({c['kept_smell']} smelly)",
+        f"{c['kept']} kept ({c['kept_clean']} clean + {c['kept_smell']} smell)",
     ])
     box(35, top, 30, h, "Monte Carlo split", [
         "10 seeds, stratified",
-        f"train {c['train']} \u00b7 test {c['test']} ({c['test_smell']} smelly)",
+        f"{c['train']} train + {c['test']} test",
     ])
     box(68, top, 30, h, "Input representation", [
         "code with comments",
-        "without comments (RQ3)",
+        "without comments (ablation)",
     ])
     line([(32, top + h / 2), (35, top + h / 2)])
     line([(65, top + h / 2), (68, top + h / 2)])
 
     # Balancing of the training split, with the three methods
-    bx, by, bw, bh = 2, 16, 63, 30
+    bx, by, bw, bh = 2, 15, 63, 33
     ax.add_patch(FancyBboxPatch((bx, by), bw, bh, boxstyle="round,pad=0,rounding_size=1.2",
                                 facecolor=FILL, edgecolor=GRID, linewidth=1))
     shares = sorted(c["shares"].items())
-    (base, (base_clean, base_smell)), rest = shares[0], shares[1:]
     ax.text(bx + bw / 2, by + bh - 4, "Balancing (training split only)", ha="center", va="center",
             fontsize=9, fontweight="bold", color=INK)
-    ax.text(bx + bw / 2, by + bh - 8.3, f"no balancing: {base:g}% smelly ({base_clean} clean + {base_smell} smelly)",
-            ha="center", va="center", fontsize=7.5, color=MUTED)
-    ax.text(bx + bw / 2, by + bh - 11.8, "each method: " + " and ".join(f"{p:g}% ({cl} + {sm})" for p, (cl, sm) in rest),
-            ha="center", va="center", fontsize=7.5, color=MUTED)
-    details = {"Class weighting": ["weighted", "cross-entropy"], "Augmentation": ["14 refactoring", "operators"],
-               "SMOTE": ["on [CLS] vectors,", "head retrained"]}
+    # One line per smell share of the training split; the first is the unbalanced baseline
+    for i, (pct, (clean, smell)) in enumerate(shares):
+        note = ", no balancing" if i == 0 else ""
+        ax.text(bx + bw / 2, by + bh - 8.3 - 3.3 * i, f"{pct:g}% smell: {clean} clean + {smell} smell{note}",
+                ha="center", va="center", fontsize=7.5, color=MUTED)
+    # Class weighting reaches the share through its loss weights, not through extra samples
+    details = {"Class weighting": ["loss weights", "(effective share)"], "Augmentation": ["14 refactoring", "operators"],
+               "SMOTE": ["on embeddings"]}
     for i, (name, color) in enumerate(METHODS):
         x = bx + 2 + i * 20
         box(x, by + 2, 19, 12.5, name, details[name], fill=TINTS[name], edge=color, size=8.5)
 
     # Model, fed by the balanced training split and by the original test split
-    mx, my, mw, mh = 68, 16, 30, 30
+    mx, my, mw, mh = 68, 15, 30, 33
     box(mx, my, mw, mh, "UniXcoder, 4 layers", [
-        "[CLS] head, last of 20 epochs",
-        "precision, recall, F1, MCC",
+        "[CLS] head",
+        "precision, recall,",
+        "F1-score, MCC",
         "training time",
-        "RQ1a, RQ1b, RQ2, RQ3",
     ])
     line([(83, top), (83, 50.5), (33.5, 50.5), (33.5, by + bh)])
     line([(93, top), (93, my + mh)], dashed=True)
     line([(bx + bw, by + bh / 2), (mx, by + bh / 2)])
 
     # Model-size ablation, which chose the four layers
-    box(68, 1.5, 30, 10.5, "Model-size ablation", ["seeds 42-44, 12 to 0 layers"], size=8.5)
-    line([(83, 12), (83, my)])
+    box(68, 1, 30, 11.5, "Model-size ablation", ["seeds 42\u201344, 0\u201312 layers", "4 layers chosen"], size=8.5)
+    line([(83, 12.5), (83, my)])
 
     # Legend
     ax.plot([2, 7], [6.5, 6.5], color=MUTED, linewidth=1.1)

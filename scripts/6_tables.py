@@ -51,8 +51,8 @@ def runs(rows, scenario, share, layers):
 
 
 def table2(stats):
-    header = ["Project", "Methods", "Clean", "Smelly", "Smelly (%)", "Median tokens (smelly)",
-              "Max tokens (smelly)", "Median tokens (clean)", "Smelly with switch", "Smelly with else-if chain"]
+    header = ["Project", "Methods", "Clean", "Smell", "Smell (%)", "Median tokens (smell)",
+              "Max tokens (smell)", "Median tokens (clean)", "Smell with switch", "Smell with else-if chain"]
     body = [[r["project"], int(r["total"]), int(r["clean"]), int(r["smell"]), float(r["smell_pct"]),
              float(r["smell_median_tok"]), int(r["smell_max_tok"]), float(r["clean_median_tok"]),
              int(r["smell_with_switch"]), int(r["smell_with_else_if"])] for r in stats]
@@ -60,8 +60,8 @@ def table2(stats):
 
 
 def table3(results):
-    header = ["Scenario", "Smelly share of train (%)", "Encoder layers", "Training", "Train clean", "Train smelly",
-              "Weight clean", "Weight smelly"]
+    header = ["Scenario", "Smell share of training split (%)", "Encoder layers", "Training", "Train clean",
+              "Train smell", "Weight clean", "Weight smell"]
     body = []
     for scenario, share, layers, name in SCENARIOS:
         r = runs(results, scenario, share, layers)[0]
@@ -72,7 +72,7 @@ def table3(results):
 
 
 def table4(summary):
-    header = ["Operator", "Smelly valid", "Smelly tried", "Smelly valid (%)", "Clean valid", "Clean tried",
+    header = ["Operator", "Smell valid", "Smell tried", "Smell valid (%)", "Clean valid", "Clean tried",
               "Clean valid (%)", "Unchanged", "Syntax error", "Over token budget", "Tool error"]
     by_op = {}
     for r in summary:
@@ -109,7 +109,7 @@ def table5(model_size):
 
 
 def table6(results):
-    header = ["Scenario", "Smelly share of train (%)", "Encoder layers"] + [
+    header = ["Scenario", "Smell share of training split (%)", "Encoder layers"] + [
         x for _, name in METRICS for x in (name, f"{name} sd")] + ["Seeds"]
     body = []
     for scenario, share, layers, name in SCENARIOS:
@@ -124,7 +124,7 @@ def table6(results):
 def table7(results):
     """Training time per run: SMOTE and the head control reuse the encoder of the no-balancing run of the
     same seed, so their total adds that run's time to their head stage."""
-    header = ["Scenario", "Smelly share of train (%)", "Encoder layers", "Own training (s)", "Own training sd",
+    header = ["Scenario", "Smell share of training split (%)", "Encoder layers", "Own training (s)", "Own training sd",
               "Total training incl. reused encoder (s)", "Inference on 70 methods (s)", "Peak GPU memory (GB)"]
     base = {(r["seed"], r["layers"]): float(r["train_seconds"]) for r in results if r["scenario"] == "none"}
     body = []

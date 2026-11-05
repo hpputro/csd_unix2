@@ -333,7 +333,7 @@ def plot(results, out_scores, out_cost):
         ax.text(params[0] - 1.5, y, name, color=INK, fontsize=9, va="center")
     ax.set_ylabel("Score on the test split", color=MUTED)
     ax.legend(frameon=False, loc="lower left", fontsize=9)
-    frame(fig, ax, "Accuracy and F1-Score")
+    frame(fig, ax, "Accuracy and F1-score")
     save(fig, out_scores)
 
     # Fine-tuning time and energy; energy only when CodeCarbon measured every run

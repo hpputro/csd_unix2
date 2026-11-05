@@ -112,7 +112,7 @@ def plot_by_share(rows, metric, label, out):
             markeredgewidth=1.5, linestyle="none", zorder=5, label="No balancing")
     ax.set_xticks(x, [f"{s}%" for s in SHARES])
     ax.set_xlim(24, 53)
-    ax.set_xlabel("Smelly share of the train side", color=MUTED)
+    ax.set_xlabel("Smell share of the training split", color=MUTED)
     ax.set_ylabel(label, color=MUTED)
     # Below the axis, where no whisker can run through it
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=4,
@@ -171,7 +171,7 @@ def plot_cost(rows, out):
         t, f1 = statistics.mean(times), statistics.mean(float(r["f1"]) for r in runs)
         ax.plot([t], [f1], marker=markers[scenario], markersize=9, color=colors[scenario], linestyle="none",
                 markeredgecolor="white", markeredgewidth=1.5, zorder=3)
-        short = name.replace(" (SMOTE control)", "").replace("Class weighting", "Weighting")
+        short = name.replace(" (SMOTE control)", "")
         # Runs that share the no-balancing time sit in one column: weighting and no balancing are
         # labelled on the left, the head-stage runs (SMOTE, head retrained) on the right
         if t < 40 and scenario in ("none", "weight"):

@@ -160,7 +160,7 @@ def save_and_print(tables, out):
 def plot_operators(clean, smell, out):
     """Share of valid variants (changed, parses, fits the input in both representations) out of
     the methods tried, per operator, for the 254 clean and 96 smelly methods of the experiment;
-    operators sorted by their smelly share, the number at each bar end is that share in percent.
+    operators sorted by their smelly share, the number at each bar end is that share in percent, to one decimal.
     It shows as a figure what Table 4 of the draft lists."""
     import matplotlib
     matplotlib.use("Agg")
@@ -178,9 +178,7 @@ def plot_operators(clean, smell, out):
         ax.barh([i + offset for i in y], [values[n] for n in names], height=0.38, color=color, label=label,
                 edgecolor="white", linewidth=1)
         for i, n in enumerate(names):
-            # One decimal below 1% so a rare valid variant does not read as none
-            text = f"{values[n]:.1f}" if 0 < values[n] < 1 else f"{values[n]:.0f}"
-            ax.text(values[n] + 1, i + offset, text, va="center", fontsize=7.5, color=analysis.MUTED)
+            ax.text(values[n] + 1, i + offset, f"{values[n]:.1f}", va="center", fontsize=7.5, color=analysis.MUTED)
     ax.set_yticks(list(y), names)
     ax.set_xlim(0, 108)
     ax.set_xlabel("Valid variants (% of methods tried)", color=analysis.MUTED)

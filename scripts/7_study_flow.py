@@ -3,9 +3,10 @@
 Draws figures/figure1_study_flow.png from switch_statements.csv (the methods
 of Fontana's dataset that have a body), token_counts.csv (their token counts)
 and datasets/dataset_seed0.csv (one Monte Carlo split; every seed has the same
-counts). Top row: dataset and filter, Monte Carlo split, input representation.
+counts). Top row: dataset and filter, Monte Carlo split, input representation
+(code with comments only; no comment ablation is run).
 The training split then goes through balancing (no balancing at the natural
-27.5% smelly; class weighting, augmentation and SMOTE at 37.7% and 50%, with
+27.5% smell; class weighting, augmentation and SMOTE at 37.7% and 50%, with
 the train set size of each share, which replaces a table of the scenarios)
 into UniXcoder kept to 4 encoder layers; the test split goes to the model as
 original code (dashed line). The model-size ablation (seeds 42-44) feeds the
@@ -106,8 +107,8 @@ def draw(c, out):
         f"{c['train']} train + {c['test']} test",
     ])
     box(68, top, 30, h, "Input representation", [
-        "code with comments",
-        "without comments (ablation)",
+        "code with comments,",
+        "whitespace collapsed",
     ])
     line([(32, top + h / 2), (35, top + h / 2)])
     line([(65, top + h / 2), (68, top + h / 2)])

@@ -126,7 +126,7 @@ def draw(c, out):
         ax.text(bx + bw / 2, by + bh - 8.3 - 3.3 * i, f"{pct:g}% smell: {clean} clean + {smell} smell{note}",
                 ha="center", va="center", fontsize=7.5, color=MUTED)
     # Class weighting reaches the share through its loss weights, not through extra samples
-    details = {"Class weighting": ["loss weights", "(effective share)"], "Augmentation": ["14 refactoring", "operators"],
+    details = {"Class weighting": ["loss weights", "(effective proportion)"], "Augmentation": ["14 refactoring", "operators"],
                "SMOTE": ["on embeddings"]}
     for i, (name, color) in enumerate(METHODS):
         x = bx + 2 + i * 20

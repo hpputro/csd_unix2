@@ -7,6 +7,8 @@ Reads results/main_experiment.csv and results/main_loss.csv written by
   figures/figure9b_main_f1_by_share.png            F1-score against the smelly share of the train side
   figures/figure10a_main_precision_scenarios.png   precision of every scenario, one dot per seed
   figures/figure10b_main_f1_scenarios.png          F1-score of every scenario, one dot per seed
+  figures/figure11_main_stats.png                  each method minus no balancing, with the paired test
+  results/main_stats.csv                           the numbers behind figure 11
   figures/figure12_main_cost.png                   F1-score against training time per scenario
   figures/figure8_main_loss.png                    train loss per epoch of the 4- and 12-layer none runs
 
@@ -19,7 +21,7 @@ docstring of the function that draws it. Precision, recall and F1 are those of
 the smelly class.
 
 Usage:
-    pip install matplotlib
+    pip install matplotlib scipy
     python scripts/5_plots.py
     python scripts/5_plots.py --representation nocomment --suffix _nocomment
 """
@@ -185,6 +187,92 @@ def plot_cost(rows, out):
     save(plt, fig, out)
 
 
+def paired_stats(rows, metric, k_train=280, k_test=70):
+    """Each method minus no balancing over the same seeds: mean difference, its 95% interval and
+    p-value from the corrected resampled t-test (Nadeau and Bengio, 2003), which widens the
+    variance by n_test/n_train because the Monte Carlo splits share methods, Holm-adjusted over
+    the six comparisons, and Cliff's delta between the two sets of seed scores."""
+    import math
+    from scipy import stats
+    base = {r["seed"]: float(r[metric]) for r in rows
+            if r["scenario"] == "none" and r["smell_pct"] == "27.5" and r["layers"] == "4"}
+    seeds = sorted(base, key=int)
+    out = []
+    for scenario, share, name, _ in SCENARIO_ROWS[2:]:
+        other = {r["seed"]: float(r[metric]) for r in rows
+                 if r["scenario"] == scenario and r["smell_pct"] == share and r["layers"] == "4"}
+        diffs = [other[s] - base[s] for s in seeds]
+        n = len(diffs)
+        mean, sd = statistics.mean(diffs), statistics.stdev(diffs)
+        se = math.sqrt((1 / n + k_test / k_train) * sd ** 2)
+        half = stats.t.ppf(0.975, n - 1) * se
+        p = 2 * stats.t.sf(abs(mean / se), n - 1) if se > 0 else 1.0
+        a, b = [other[s] for s in seeds], [base[s] for s in seeds]
+        delta = (sum(x > y for x in a for y in b) - sum(x < y for x in a for y in b)) / (n * n)
+        out.append({"metric": metric, "scenario": scenario, "smell_pct": share, "name": name,
+                    "mean_diff": mean, "ci_low": mean - half, "ci_high": mean + half, "p": p,
+                    "cliffs_delta": delta})
+    # Holm over the comparisons of this metric
+    order = sorted(range(len(out)), key=lambda i: out[i]["p"])
+    running = 0.0
+    for rank, i in enumerate(order):
+        running = max(running, min(1.0, (len(out) - rank) * out[i]["p"]))
+        out[i]["p_holm"] = running
+    return out
+
+
+def delta_size(delta):
+    """Magnitude of Cliff's delta after Romano et al. (2006)."""
+    d = abs(delta)
+    return "negligible" if d < 0.147 else "small" if d < 0.33 else "medium" if d < 0.474 else "large"
+
+
+def plot_stats(rows, out, out_csv):
+    """Difference from no balancing (4 layers, same seeds 0-9) for precision (left) and F1-score
+    (right): dot = mean difference, bar = 95% interval of the corrected resampled t-test, dashed
+    line = no difference; an interval that crosses zero means no significant difference. The
+    number beside each row is Cliff's delta; the Holm-adjusted p-values are in out_csv (all 1.00
+    in the paper's run, so the caption states them once instead of on every row)."""
+    plt = setup()
+    results = {m: paired_stats(rows, m) for m in ("precision", "f1")}
+    fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.9), sharey=True)
+    colors = {m: c for m, _, c, _ in METHODS}
+    markers = {m: k for m, _, _, k in METHODS}
+    for ax, (metric, label) in zip(axes, (("precision", "Precision"), ("f1", "F1-score"))):
+        res = results[metric]
+        for y, r in enumerate(reversed(res)):
+            color = colors[r["scenario"]]
+            ax.plot([r["ci_low"], r["ci_high"]], [y, y], color=color, linewidth=1.6, alpha=0.6)
+            ax.plot([r["mean_diff"]], [y], marker=markers[r["scenario"]], markersize=7, color=color,
+                    markeredgecolor="white", markeredgewidth=1.2, linestyle="none", zorder=3)
+            ax.text(1.03, y, f"\u03b4 {r['cliffs_delta']:+.2f}",
+                    transform=ax.get_yaxis_transform(), fontsize=7.5, color=MUTED, va="center")
+        ax.axvline(0, color=MUTED, linestyle="--", linewidth=1)
+        # One x range for both panels, so a difference reads the same on the left and the right
+        low = min(r["ci_low"] for m in results for r in results[m])
+        high = max(r["ci_high"] for m in results for r in results[m])
+        ax.set_xlim(low - 0.01, high + 0.01)
+        ax.set_xlabel(f"{label} difference from no balancing", color=MUTED)
+        style(ax, label, grid_axis="x")
+    names = [r["name"] for r in reversed(results["precision"])]
+    axes[0].set_yticks(range(len(names)), names)
+    fig.tight_layout(w_pad=3.5)
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    fig.savefig(out, dpi=300)
+    plt.close(fig)
+    print(f"-> {out}")
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        cols = ["metric", "scenario", "smell_pct", "mean_diff", "ci_low", "ci_high", "p", "p_holm",
+                "cliffs_delta", "delta_size"]
+        writer = csv.DictWriter(f, fieldnames=cols)
+        writer.writeheader()
+        for metric in results:
+            for r in results[metric]:
+                writer.writerow({**{c: (round(r[c], 4) if isinstance(r.get(c), float) else r.get(c))
+                                    for c in cols[:-1]}, "delta_size": delta_size(r["cliffs_delta"])})
+    print(f"-> {out_csv}")
+
+
 def plot_loss(loss_rows, out):
     """Mean train loss per epoch over the seeds (0-9) of the no-balancing runs with 4 and 12 encoder
     layers, each seed as a faint line, the mean at epoch 20 written at the line end. The dotted
@@ -233,6 +321,8 @@ def main():
     plot_by_share(rows, "f1", "F1-score", out("figure9b_main_f1_by_share"))
     plot_scenarios(rows, "precision", "Precision", out("figure10a_main_precision_scenarios"))
     plot_scenarios(rows, "f1", "F1-score", out("figure10b_main_f1_scenarios"))
+    plot_stats(rows, out("figure11_main_stats"), os.path.join(os.path.dirname(args.results) or ".",
+                                                               f"main_stats{args.suffix}.csv"))
     plot_cost(rows, out("figure12_main_cost"))
     plot_loss(loss_rows, out("figure8_main_loss"))
 

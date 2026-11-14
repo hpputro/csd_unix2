@@ -6,7 +6,7 @@ datasets/dataset_seed<seed>.csv and scores it on the test split. Each run
 appends one row to results/model_size.csv (finished runs are skipped on a
 rerun) and the mean train loss of every epoch to results/model_size_loss.csv,
 to see whether the larger models memorise the train split. Two figures plot,
-against the parameter count, accuracy and F1-score
+against the parameter count, precision and F1-score
 (figures/figure5_model_size_scores.png, Figure 5) and fine-tuning time and,
 when measured, energy (figures/figure6_model_size_cost.png, Figure 6); a third
 plots the train loss per epoch of a few sizes
@@ -262,7 +262,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
 def plot(results, out_scores, out_cost):
     """Two figures against the parameter count, from the full model on the left to the smallest
     on the right, with the encoder layers kept on the top axis:
-      out_scores  accuracy and F1-score of the smelly class on the test split; a line is the
+      out_scores  precision and F1-score of the smell class on the test split; a line is the
                   mean over the seeds in results (42, 43 and 44 in the paper) and each faint
                   dot one seed
       out_cost    fine-tuning time (left axis, minutes) and, when CodeCarbon measured every
@@ -315,10 +315,10 @@ def plot(results, out_scores, out_cost):
         fig.savefig(out, dpi=300)
         plt.close(fig)
 
-    # Accuracy and F1-score
+    # Precision and F1-score, the metrics of the main experiment; accuracy is left to the table
     fig, ax = plt.subplots(figsize=(7, 4.4))
     ends = []
-    for metric, color, name in [("accuracy", ACC_COLOR, "Accuracy"), ("f1", F1_COLOR, "F1-score")]:
+    for metric, color, name in [("precision", ACC_COLOR, "Precision"), ("f1", F1_COLOR, "F1-score")]:
         means = draw(ax, metric, color)
         ax.plot([], [], color=color, linewidth=2, marker="o", markersize=6, label=name)
         ends.append([means[0], name])
@@ -333,7 +333,7 @@ def plot(results, out_scores, out_cost):
         ax.text(params[0] - 1.5, y, name, color=INK, fontsize=9, va="center")
     ax.set_ylabel("Score on the test split", color=MUTED)
     ax.legend(frameon=False, loc="lower left", fontsize=9)
-    frame(fig, ax, "Accuracy and F1-score")
+    frame(fig, ax, "Precision and F1-score")
     save(fig, out_scores)
 
     # Fine-tuning time and energy; energy only when CodeCarbon measured every run

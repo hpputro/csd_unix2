@@ -60,7 +60,7 @@ def table2(stats):
 
 
 def table3(results):
-    header = ["Scenario", "Smell share of training split (%)", "Encoder layers", "Training", "Train clean",
+    header = ["Scenario", "Smell proportion of training split (%)", "Encoder layers", "Training", "Train clean",
               "Train smell", "Weight clean", "Weight smell"]
     body = []
     for scenario, share, layers, name in SCENARIOS:
@@ -109,7 +109,7 @@ def table5(model_size):
 
 
 def table6(results):
-    header = ["Scenario", "Smell share of training split (%)", "Encoder layers"] + [
+    header = ["Scenario", "Smell proportion of training split (%)", "Encoder layers"] + [
         x for _, name in METRICS for x in (name, f"{name} sd")] + ["Seeds"]
     body = []
     for scenario, share, layers, name in SCENARIOS:
@@ -124,7 +124,7 @@ def table6(results):
 def table7(results):
     """Training time per run: SMOTE and the head control reuse the encoder of the no-balancing run of the
     same seed, so their total adds that run's time to their head stage."""
-    header = ["Scenario", "Smell share of training split (%)", "Encoder layers", "Own training (s)", "Own training sd",
+    header = ["Scenario", "Smell proportion of training split (%)", "Encoder layers", "Own training (s)", "Own training sd",
               "Total training incl. reused encoder (s)", "Inference on 70 methods (s)", "Peak GPU memory (GB)"]
     base = {(r["seed"], r["layers"]): float(r["train_seconds"]) for r in results if r["scenario"] == "none"}
     body = []

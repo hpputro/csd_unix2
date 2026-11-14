@@ -112,12 +112,12 @@ def plot_by_share(rows, metric, label, out):
             markeredgewidth=1.5, linestyle="none", zorder=5, label="No balancing")
     ax.set_xticks(x, [f"{s}%" for s in SHARES])
     ax.set_xlim(24, 53)
-    ax.set_xlabel("Smell share of the training split", color=MUTED)
+    ax.set_xlabel("Smell proportion of the training split", color=MUTED)
     ax.set_ylabel(label, color=MUTED)
     # Below the axis, where no whisker can run through it
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=4,
               handletextpad=0.3, columnspacing=1.2)
-    style(ax, f"{label} by smell share")
+    style(ax, f"{label} by smell proportion")
     save(plt, fig, out)
 
 

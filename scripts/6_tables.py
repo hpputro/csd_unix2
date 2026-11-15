@@ -10,6 +10,8 @@ number:
   table5_model_size   the ten model sizes, mean over seeds 42-44 (results/model_size.csv)
   table6_scores       test scores per scenario, mean and sd over seeds 0-9 (results/main_experiment.csv)
   table7_cost         training and inference time per scenario (results/main_experiment.csv)
+  projection          precision projected to lower smell proportions in deployment, Eq. (9)
+                      (results/main_experiment.csv; also written to results/main_projection.csv)
 
 Means and standard deviations sit in separate numeric columns. Precision,
 recall and F1 are those of the smelly class.
@@ -140,6 +142,34 @@ def table7(results):
     return header, body
 
 
+def projection(results, prevalences=(0.271, 0.10, 0.05)):
+    """Precision a model would reach where smell methods make up a smaller share of the code:
+    Precision(pi_d) = TPR*pi_d / (TPR*pi_d + FPR*(1 - pi_d)), with TPR (recall) and FPR taken from
+    each seed's test confusion matrix, then averaged over seeds 0-9. At 27.1% (the test split's
+    own proportion, 19 of 70) it gives back the observed precision, a check on the formula."""
+    def project(r, pi):
+        tpr = int(r["tp"]) / (int(r["tp"]) + int(r["fn"]))
+        fpr = int(r["fp"]) / (int(r["fp"]) + int(r["tn"]))
+        denom = tpr * pi + fpr * (1 - pi)
+        return tpr * pi / denom if denom else 0.0
+
+    header = ["Scenario", "Smell proportion of training split (%)", "Encoder layers", "Recall (TPR)",
+              "FPR"] + [x for pi in prevalences for x in (f"Precision at {100 * pi:g}% smell",
+                                                           f"Precision at {100 * pi:g}% smell sd")]
+    body = []
+    for scenario, share, layers, name in SCENARIOS:
+        if scenario == "head":
+            continue
+        rs = runs(results, scenario, share, layers)
+        tpr = [int(r["tp"]) / (int(r["tp"]) + int(r["fn"])) for r in rs]
+        fpr = [int(r["fp"]) / (int(r["fp"]) + int(r["tn"])) for r in rs]
+        row = [name, float(share), int(layers), round(statistics.mean(tpr), 3), round(statistics.mean(fpr), 3)]
+        for pi in prevalences:
+            row += mean_sd(project(r, pi) for r in rs)
+        body.append(row)
+    return header, body
+
+
 def write(path, sheets):
     from openpyxl import Workbook
     from openpyxl.styles import Font
@@ -179,8 +209,16 @@ def main():
               "table4_operators": table4(read(args.pool_summary)),
               "table5_model_size": table5(model_size),
               "table6_scores": table6(results),
-              "table7_cost": table7(results)}
+              "table7_cost": table7(results),
+              "projection": projection(results)}
     write(args.out, sheets)
+    header, body = sheets["projection"]
+    projection_csv = os.path.join(os.path.dirname(args.out) or ".", "main_projection.csv")
+    with open(projection_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(body)
+    print(f"-> {projection_csv}")
     print(f"-> {args.out}: {', '.join(sheets)}")
 
 

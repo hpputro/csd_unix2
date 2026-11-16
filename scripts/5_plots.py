@@ -5,6 +5,8 @@ Reads results/main_experiment.csv and results/main_loss.csv written by
 
   figures/figure9a_main_precision_by_share.png     precision against the smelly share of the train side
   figures/figure9b_main_f1_by_share.png            F1-score against the smelly share of the train side
+  figures/figure9c_main_precision_projected.png    precision projected to lower smell proportions in deployment, Eq. (9)
+  figures/figure9d_main_f1_projected.png           F1-score projected the same way
   figures/figure10a_main_precision_scenarios.png   precision of every scenario, one dot per seed
   figures/figure10b_main_f1_scenarios.png          F1-score of every scenario, one dot per seed
   figures/figure11_main_stats.png                  each method minus no balancing, with the paired test
@@ -120,6 +122,58 @@ def plot_by_share(rows, metric, label, out):
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=4,
               handletextpad=0.3, columnspacing=1.2)
     style(ax, f"{label} by smell proportion")
+    save(plt, fig, out)
+
+
+def projected(r, pi, metric):
+    """Precision or F1-score one run would reach where smell methods make up a proportion pi of the
+    code, Eq. (9): its recall (TPR) and FPR on the test split stay, only the proportion changes."""
+    tpr = int(r["tp"]) / (int(r["tp"]) + int(r["fn"]))
+    fpr = int(r["fp"]) / (int(r["fp"]) + int(r["tn"]))
+    denom = tpr * pi + fpr * (1 - pi)
+    precision = tpr * pi / denom if denom else 0.0
+    if metric == "precision":
+        return precision
+    return 2 * precision * tpr / (precision + tpr) if precision + tpr else 0.0
+
+
+def plot_projection(rows, metric, label, out, test_pi=19 / 70, marks=(0.10, 0.05)):
+    """`metric` projected with Eq. (9) to smell proportions in deployment from 2% to 30%, mean over
+    seeds 0-9 of each seed's projection: one curve per scenario, colored by method, solid for
+    37.7% and dashed for 50% smell in the training split, gray for no balancing. The dotted
+    vertical line marks the test split's own proportion (27.1%), where each curve gives back the
+    measured score, and the points mark 10% and 5%, the proportions of Table 3."""
+    plt = setup()
+    from matplotlib.lines import Line2D
+    fig, ax = plt.subplots(figsize=(6.4, 4.2))
+    grid = [p / 1000 for p in range(20, 301)]
+
+    def curve(scenario, share, color, dashed, width=2.0):
+        rs = [r for r in rows if r["scenario"] == scenario and r["smell_pct"] == share and r["layers"] == "4"]
+        mean = lambda pi: statistics.mean(projected(r, pi, metric) for r in rs)
+        ax.plot([100 * p for p in grid], [mean(p) for p in grid], color=color, linewidth=width,
+                linestyle=(0, (4, 2)) if dashed else "-", zorder=3)
+        ax.plot([100 * p for p in marks], [mean(p) for p in marks], linestyle="none", marker="o",
+                markersize=5, color=color, markeredgecolor="white", markeredgewidth=1, zorder=4)
+
+    curve("none", "27.5", REFERENCE, False, width=2.5)
+    for scenario, _, color, _ in METHODS:
+        curve(scenario, "37.7", color, False)
+        curve(scenario, "50.0", color, True)
+    ax.axvline(100 * test_pi, color=MUTED, linewidth=1, linestyle=":", zorder=2)
+    ax.text(100 * test_pi - 0.4, 0.03, "test split\n27.1%", ha="right", va="bottom", fontsize=8, color=MUTED)
+    ax.set_xlim(0, 31)
+    ax.set_ylim(0, 1)
+    ax.set_xticks([0, 5, 10, 15, 20, 25, 30], ["0%", "5%", "10%", "15%", "20%", "25%", "30%"])
+    ax.set_xlabel("Smell proportion in deployment", color=MUTED)
+    ax.set_ylabel(f"Projected {label.lower() if label == 'Precision' else label}", color=MUTED)
+    handles = [Line2D([], [], color=REFERENCE, linewidth=2.5, label="No balancing")]
+    handles += [Line2D([], [], color=color, linewidth=2, label=name) for _, name, color, _ in METHODS]
+    handles += [Line2D([], [], color=MUTED, linewidth=1.5, label="37.7%"),
+                Line2D([], [], color=MUTED, linewidth=1.5, linestyle=(0, (4, 2)), label="50%")]
+    ax.legend(handles=handles, frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.17),
+              ncol=6, handletextpad=0.4, columnspacing=1.0, handlelength=1.8)
+    style(ax, f"Projected {label.lower() if label == 'Precision' else label} by smell proportion in deployment")
     save(plt, fig, out)
 
 
@@ -319,6 +373,8 @@ def main():
     out = lambda name: os.path.join(args.figures_dir, f"{name}{args.suffix}.png")
     plot_by_share(rows, "precision", "Precision", out("figure9a_main_precision_by_share"))
     plot_by_share(rows, "f1", "F1-score", out("figure9b_main_f1_by_share"))
+    plot_projection(rows, "precision", "Precision", out("figure9c_main_precision_projected"))
+    plot_projection(rows, "f1", "F1-score", out("figure9d_main_f1_projected"))
     plot_scenarios(rows, "precision", "Precision", out("figure10a_main_precision_scenarios"))
     plot_scenarios(rows, "f1", "F1-score", out("figure10b_main_f1_scenarios"))
     plot_stats(rows, out("figure11_main_stats"), os.path.join(os.path.dirname(args.results) or ".",

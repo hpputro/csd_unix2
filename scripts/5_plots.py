@@ -142,7 +142,7 @@ def plot_projection(rows, metric, label, out, share="37.7", test_pi=19 / 70, mar
     seeds 0-9 of each seed's projection: one curve per method trained at 37.7% smell, and the
     no-balancing curve (gray). Thin vertical lines mark 5% and 10% (the proportions of Table 3)
     and the test split's own 27.1%, where each curve gives back the measured score; each curve
-    carries its method's marker at these three points, nudged apart along x."""
+    carries its method's marker, kept small, at these three points."""
     plt = setup()
     fig, ax = plt.subplots(figsize=(6.4, 4.2))
     grid = [p / 1000 for p in range(20, 301)]
@@ -150,24 +150,24 @@ def plot_projection(rows, metric, label, out, share="37.7", test_pi=19 / 70, mar
     for pi in points:
         ax.axvline(100 * pi, color=GRID, linewidth=1.2, zorder=1)
 
-    def curve(scenario, share_, name, color, marker, shift):
+    def curve(scenario, share_, name, color, marker):
         rs = [r for r in rows if r["scenario"] == scenario and r["smell_pct"] == share_ and r["layers"] == "4"]
         mean = lambda pi: statistics.mean(projected(r, pi, metric) for r in rs)
         ax.plot([100 * p for p in grid], [mean(p) for p in grid], color=color, linewidth=2, zorder=3)
-        # Markers are nudged apart along x, as in the figures by training proportion, so none hides another
-        ax.plot([100 * p + shift for p in points], [mean(p) for p in points], linestyle="none", marker=marker,
-                markersize=8, color=color, markeredgecolor="white", markeredgewidth=1.5, zorder=4, label=name)
+        # Small markers on the vertical lines, so the scenarios stack one above another at each proportion
+        ax.plot([100 * p for p in points], [mean(p) for p in points], linestyle="none", marker=marker,
+                markersize=4.5, color=color, markeredgecolor="white", markeredgewidth=0.6, zorder=4, label=name)
 
-    for i, (scenario, name, color, marker) in enumerate(METHODS):
-        curve(scenario, share, f"{name} {share}%", color, marker, (i - 1) * 0.7 + 0.35)
-    curve("none", "27.5", "No balancing", REFERENCE, "o", -1.05)
+    for scenario, name, color, marker in METHODS:
+        curve(scenario, share, f"{name} {share}%", color, marker)
+    curve("none", "27.5", "No balancing", REFERENCE, "o")
     ax.set_xlim(0, 31)
     ax.set_ylim(0, 1)
     ax.set_xticks([100 * p for p in points], ["5%", "10%", "27.1%\n(test split)"])
     ax.set_xlabel("Smell proportion in deployment", color=MUTED)
     ax.set_ylabel(label, color=MUTED)
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=4,
-              handletextpad=0.3, columnspacing=1.2)
+              handletextpad=0.3, columnspacing=1.2, markerscale=1.6)
     style(ax, f"Projected {label.lower() if label == 'Precision' else label} by smell proportion in deployment")
     save(plt, fig, out)
 

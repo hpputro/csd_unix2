@@ -9,7 +9,7 @@ Reads results/main_experiment.csv and results/main_loss.csv written by
   figures/figure9d_main_f1_projected.png           F1-score projected the same way
   figures/figure10a_main_precision_scenarios.png   precision of every scenario, one dot per seed
   figures/figure10b_main_f1_scenarios.png          F1-score of every scenario, one dot per seed
-  figures/figure11_main_stats.png                  each method minus no balancing per seed, with the paired test
+  figures/figure11_main_stats.png                  each method minus no balancing, with the paired test
   results/main_stats.csv                           the numbers behind figure 11
   figures/figure12_main_cost.png                   F1-score against training time per scenario
   figures/figure8_main_loss.png                    train loss per epoch of the 4- and 12-layer none runs
@@ -279,11 +279,11 @@ def delta_size(delta):
 
 def plot_stats(rows, out, out_csv):
     """Difference from no balancing (4 layers, same seeds 0-9) for precision (left) and F1-score
-    (right): each seed's difference as a small faint marker, spread a little up and down where
-    seeds give the same difference, and the mean difference as the large marker; dashed line =
-    no difference. Beside each row: Cliff's delta and the number of seeds (of 10) where the
-    method beats no balancing. The 95% intervals of the corrected resampled t-test and the
-    Holm-adjusted p-values are in out_csv (all p_holm 1.00 in the paper's run)."""
+    (right): dot = mean difference, bar = 95% interval of the corrected resampled t-test, dashed
+    line = no difference; an interval that crosses zero means no significant difference. Beside
+    each row: Cliff's delta and the raw p-value of the test; the Holm-adjusted p-values and the
+    seeds better or worse than no balancing are in out_csv (all p_holm 1.00 in the paper's run,
+    so the caption states them once instead of on every row)."""
     plt = setup()
     results = {m: paired_stats(rows, m) for m in ("precision", "f1")}
     fig, axes = plt.subplots(1, 2, figsize=(7.2, 3.9), sharey=True)
@@ -293,23 +293,16 @@ def plot_stats(rows, out, out_csv):
         res = results[metric]
         for y, r in enumerate(reversed(res)):
             color = colors[r["scenario"]]
-            # Seeds with the same difference are stacked up and down around the row
-            seen = {}
-            for d in r["diffs"]:
-                k = seen.get(round(d, 4), 0)
-                seen[round(d, 4)] = k + 1
-                offset = (k + 1) // 2 * 0.13 * (1 if k % 2 else -1)
-                ax.plot([d], [y + offset], marker=markers[r["scenario"]], markersize=4, color=color,
-                        alpha=0.35, markeredgewidth=0, linestyle="none", zorder=2)
-            ax.plot([r["mean_diff"]], [y], marker=markers[r["scenario"]], markersize=8, color=color,
+            ax.plot([r["ci_low"], r["ci_high"]], [y, y], color=color, linewidth=1.6, alpha=0.6)
+            ax.plot([r["mean_diff"]], [y], marker=markers[r["scenario"]], markersize=7, color=color,
                     markeredgecolor="white", markeredgewidth=1.2, linestyle="none", zorder=3)
-            ax.text(1.03, y, f"\u03b4 {r['cliffs_delta']:+.2f}\n{r['better']}/{r['seeds']} better",
+            ax.text(1.03, y, f"\u03b4 {r['cliffs_delta']:+.2f}\np = {r['p']:.2f}",
                     transform=ax.get_yaxis_transform(), fontsize=7, color=MUTED, va="center", linespacing=1.3)
         ax.axvline(0, color=MUTED, linestyle="--", linewidth=1)
         # One x range for both panels, so a difference reads the same on the left and the right
-        low = min(min(r["diffs"]) for m in results for r in results[m])
-        high = max(max(r["diffs"]) for m in results for r in results[m])
-        ax.set_xlim(low - 0.015, high + 0.015)
+        low = min(r["ci_low"] for m in results for r in results[m])
+        high = max(r["ci_high"] for m in results for r in results[m])
+        ax.set_xlim(low - 0.01, high + 0.01)
         ax.set_xlabel(f"{label} difference from no balancing", color=MUTED)
         style(ax, label, grid_axis="x")
     names = [r["name"] for r in reversed(results["precision"])]

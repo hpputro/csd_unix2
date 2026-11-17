@@ -25,6 +25,7 @@ import argparse
 import csv
 import importlib
 import os
+import socket
 import statistics
 import time
 
@@ -34,7 +35,7 @@ log = model_size.log
 
 COLUMNS = ["layers", "setting", "batch_size", "methods", "repeats", "seconds", "ms_per_method",
            "ms_per_method_p95", "energy_kwh", "gpu_energy_kwh", "cpu_energy_kwh", "ram_energy_kwh",
-           "mwh_per_method", "cpu_mode", "country", "peak_gpu_mb", "params_total"]
+           "mwh_per_method", "cpu_mode", "country", "peak_gpu_mb", "params_total", "host"]
 
 
 def originals(dataset_csv, data_dir):
@@ -79,7 +80,7 @@ def measure(n_layers, examples, args, device, pad_id, base):
         "mwh_per_method": round(1e6 * energy.energy_consumed / scored, 4) if energy else "",
         "cpu_mode": getattr(energy, "cpu_mode", "") if energy else "", "country": args.country if energy else "",
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
-        "params_total": sum(p.numel() for p in model.parameters()),
+        "params_total": sum(p.numel() for p in model.parameters()), "host": socket.gethostname(),
     })
     log(f"{n_layers} layers, batch {args.batch_size}: {rows[-1]['ms_per_method']} ms and "
         f"{rows[-1]['mwh_per_method']} mWh per method")
@@ -104,6 +105,7 @@ def measure(n_layers, examples, args, device, pad_id, base):
         "ms_per_method_p95": round(times[int(0.95 * (len(times) - 1))], 3),
         "energy_kwh": "", "gpu_energy_kwh": "", "cpu_energy_kwh": "", "ram_energy_kwh": "", "mwh_per_method": "",
         "cpu_mode": "", "country": "", "peak_gpu_mb": "", "params_total": rows[0]["params_total"],
+        "host": socket.gethostname(),
     })
     log(f"{n_layers} layers, one at a time: median {rows[-1]['ms_per_method']} ms, "
         f"95th percentile {rows[-1]['ms_per_method_p95']} ms")

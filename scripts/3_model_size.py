@@ -22,6 +22,15 @@ whitespace collapsed. The model of the last epoch is scored; unlike the earlier
 paper no epoch is picked on held-out data, so the test split is never used for
 training decisions.
 
+Energy: CodeCarbon (offline, grid intensity of --country) measures each
+fine-tuning, sampling power every --measure-power-secs seconds, and the row
+records the total and its GPU, CPU and RAM parts, how the CPU part was obtained
+(cpu_mode: intel_rapl = measured, cpu_load or constant = estimated) and the
+machine (host). --energy-run repeats the ablation into files of its own
+(results/model_size_energy*.csv), for measuring energy again on an idle
+machine without touching the scores; the time-and-energy figure then takes
+its time and energy from that file whenever it exists.
+
 Usage:
     pip install torch transformers matplotlib codecarbon
     python scripts/3_model_size.py --country JPN         # seeds 42 43 44, layers 12 10 8 6 5 4 3 2 1 0
@@ -30,6 +39,7 @@ Usage:
     python scripts/3_model_size.py --batch-size 2 --grad-accum 8   # still batch 16, less memory
     python scripts/3_model_size.py --layers 12 6 --seeds 42
     python scripts/3_model_size.py --plot-only
+    python scripts/3_model_size.py --energy-run          # energy again, into results/model_size_energy*.csv
     python scripts/3_model_size.py --plot-only --loss-layers 12 4 2 1
 """
 import argparse
@@ -39,6 +49,7 @@ import importlib
 import math
 import os
 import random
+import socket
 import statistics
 import time
 
@@ -48,7 +59,11 @@ analysis = importlib.import_module("0_dataset_analysis")
 RESULT_COLUMNS = ["seed", "layers", "params_total", "params_trainable", "representation",
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
-                  "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps", "weight_decay", "max_len"]
+                  "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps", "weight_decay", "max_len",
+                  "gpu_energy_kwh", "cpu_energy_kwh", "ram_energy_kwh", "cpu_mode", "host"]
+# Columns of the energy measurement, shared with 4_main_experiment.py and 9_inference_cost.py
+ENERGY_COLUMNS = ["energy_kwh", "emissions_kg", "country", "gpu_energy_kwh", "cpu_energy_kwh", "ram_energy_kwh",
+                  "cpu_mode", "host"]
 LOSS_COLUMNS = ["seed", "layers", "representation", "epoch", "train_loss"]
 # A finished run is reused only when it was trained with the same settings
 CONFIG_COLUMNS = ["representation", "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler",
@@ -88,6 +103,48 @@ def load_split(dataset_csv, data_dir, augmented=False):
                 code = src.read()
             (train if r["split"] == "train" else test).append((code, int(r["label"])))
     return train, test
+
+
+def start_tracker(args):
+    """A started CodeCarbon tracker, or None when args.codecarbon is off."""
+    if not args.codecarbon:
+        return None
+    try:
+        from codecarbon import OfflineEmissionsTracker
+    except ImportError:
+        raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run with --no-codecarbon")
+    # Offline mode takes the grid carbon intensity of the given country instead of guessing the
+    # location from the IP address; power is read every measure_power_secs (default 15 s is longer
+    # than a whole run here)
+    tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False,
+                                      measure_power_secs=args.measure_power_secs)
+    tracker.start()
+    return tracker
+
+
+def stop_tracker(tracker):
+    """Stops the tracker; returns its data with the CPU mode attached, or None when off or failed."""
+    if tracker is None:
+        return None
+    # CodeCarbon swallows its own errors in stop() and then never sets final_emissions_data
+    tracker.stop()
+    energy = getattr(tracker, "final_emissions_data", None)
+    if energy is None:
+        log("CodeCarbon could not report this run; energy and emissions are left empty")
+        return None
+    # How the CPU power is obtained: intel_rapl is measured, the other modes estimate it
+    energy.cpu_mode = next((str(getattr(h, "_mode", "")) for h in getattr(tracker, "_hardware", [])
+                            if type(h).__name__ == "CPU"), "")
+    return energy
+
+
+def energy_values(energy, country):
+    """The ENERGY_COLUMNS of one measurement; 8 decimals of kWh (0.01 mWh), as a stage can be short."""
+    part = lambda name: round(getattr(energy, name), 8) if energy else ""
+    return {"energy_kwh": part("energy_consumed"), "emissions_kg": part("emissions"),
+            "country": country if energy else "", "gpu_energy_kwh": part("gpu_energy"),
+            "cpu_energy_kwh": part("cpu_energy"), "ram_energy_kwh": part("ram_energy"),
+            "cpu_mode": getattr(energy, "cpu_mode", "") if energy else "", "host": socket.gethostname()}
 
 
 def load_model_and_tokenizer(model_name):
@@ -179,17 +236,9 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     rng = random.Random(seed)
 
-    tracker = None
     if args.codecarbon:
-        try:
-            from codecarbon import OfflineEmissionsTracker
-        except ImportError:
-            raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run with --no-codecarbon")
-        # Offline mode takes the grid carbon intensity of the given country instead of
-        # guessing the location from the IP address, so every machine reports the same way
         log(f"starting CodeCarbon ({args.country})")
-        tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False)
-        tracker.start()
+    tracker = start_tracker(args)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     start = time.time()
@@ -220,13 +269,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
             f"{time.time() - start:.0f}s elapsed")
 
     train_seconds = time.time() - start
-    energy = None
-    if tracker:
-        # CodeCarbon swallows its own errors in stop() and then never sets final_emissions_data
-        tracker.stop()
-        energy = getattr(tracker, "final_emissions_data", None)
-        if energy is None:
-            log("CodeCarbon could not report this run; energy and emissions are left empty")
+    energy = stop_tracker(tracker)
 
     log("scoring the test split")
     model.eval()
@@ -249,9 +292,7 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
         "train_seconds": round(train_seconds, 1),
         "test_seconds": round(test_seconds, 2),
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
-        "energy_kwh": round(energy.energy_consumed, 6) if energy else "",
-        "emissions_kg": round(energy.emissions, 6) if energy else "",
-        "country": args.country if energy else "",
+        **energy_values(energy, args.country),
         **config_values(args),
     }
     loss_rows = [{"seed": seed, "layers": n_layers, "representation": args.representation, "epoch": e,
@@ -259,14 +300,15 @@ def run(seed, n_layers, args, load=load_model_and_tokenizer):
     return result, loss_rows
 
 
-def plot(results, out_scores, out_cost):
+def plot(results, out_scores, out_cost, cost_results=None):
     """Two figures against the parameter count, from the full model on the left to the smallest
     on the right, with the encoder layers kept on the top axis:
       out_scores  precision and F1-score of the smell class on the test split; a line is the
                   mean over the seeds in results (42, 43 and 44 in the paper) and each faint
                   dot one seed
       out_cost    fine-tuning time (left axis, minutes) and, when CodeCarbon measured every
-                  run, fine-tuning energy (right axis, Wh); means over the same seeds
+                  run, fine-tuning energy (right axis, Wh); means over the same seeds, taken
+                  from cost_results (the energy run) when given
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -337,6 +379,13 @@ def plot(results, out_scores, out_cost):
     save(fig, out_scores)
 
     # Fine-tuning time and energy; energy only when CodeCarbon measured every run
+    if cost_results:
+        # Sizes the energy run has not reached yet keep the ablation's own rows
+        cost = {}
+        for r in cost_results:
+            cost.setdefault(int(r["layers"]), []).append(r)
+        by_layers = {k: cost.get(k) or by_layers[k] for k in layers}
+        results = [r for k in layers for r in by_layers[k]]
     has_energy = all(r.get("energy_kwh") not in (None, "") for r in results)
     fig, ax = plt.subplots(figsize=(7, 4.0))
     draw(ax, "train_seconds", TIME_COLOR, scale=1 / 60, dots=False)
@@ -441,8 +490,14 @@ def main():
     parser.add_argument("--warmup-steps", type=int, default=50)
     parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=True,
                         help="measure training energy and emissions with CodeCarbon (on by default)")
-    parser.add_argument("--country", default="IDN",
+    parser.add_argument("--country", default="JPN",
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
+    parser.add_argument("--measure-power-secs", type=float, default=1.0,
+                        help="CodeCarbon sampling interval (s); its own default of 15 s is longer than a run")
+    parser.add_argument("--energy-run", action="store_true",
+                        help="repeat the runs into results/model_size_energy*.csv (energy on, figures untouched)")
+    parser.add_argument("--energy-out", default="results/model_size_energy.csv",
+                        help="results of the energy run; the time-and-energy figure uses it when it exists")
     parser.add_argument("--out", default="results/model_size.csv")
     parser.add_argument("--loss-out", default="results/model_size_loss.csv")
     parser.add_argument("--figure-scores", default="figures/figure5_model_size_scores.png")
@@ -454,6 +509,10 @@ def main():
                         help="train on the CPU when no GPU is found instead of stopping")
     parser.add_argument("--plot-only", action="store_true")
     args = parser.parse_args()
+    if args.energy_run:
+        args.codecarbon = True
+        args.out = args.energy_out
+        args.loss_out = args.energy_out.replace(".csv", "_loss.csv")
 
     if not args.plot_only:
         # Lets the CUDA allocator grow segments instead of fragmenting; must be set before CUDA starts
@@ -488,7 +547,7 @@ def main():
                 torch.cuda.empty_cache()
                 new_file = not os.path.exists(args.out)
                 with open(args.out, "a", newline="", encoding="utf-8") as f:
-                    writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS)
+                    writer = csv.DictWriter(f, fieldnames=RESULT_COLUMNS, extrasaction="ignore")
                     if new_file:
                         writer.writeheader()
                     writer.writerow(result)
@@ -501,9 +560,16 @@ def main():
                 log(f"seed {seed}, {n_layers:>2} layers, {result['params_total'] / 1e6:6.1f}M params: "
                     f"acc {result['accuracy']:.3f}, F1 {result['f1']:.3f}, {result['train_seconds']}s")
 
+    if args.energy_run:
+        print(f"-> {args.out}; run again with --plot-only to draw the figures with this energy")
+        return
     results = [r for r in read_results(args.out) if same_config(r, args)]
+    cost = [r for r in read_results(args.energy_out) if same_config(r, args)]
+    if cost:
+        log(f"time and energy of the cost figure from {args.energy_out} "
+            f"({', '.join(sorted({r.get('host', '') for r in cost}))})")
     if results:
-        plot(results, args.figure_scores, args.figure_cost)
+        plot(results, args.figure_scores, args.figure_cost, cost or None)
         print(f"-> {args.out}, {args.figure_scores}, {args.figure_cost}")
     loss_rows = [r for r in read_results(args.loss_out) if r["representation"] == args.representation]
     if loss_rows:

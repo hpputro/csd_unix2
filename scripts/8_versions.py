@@ -16,8 +16,9 @@ import subprocess
 import sys
 
 # Distribution names as pip knows them, in the order the paper would cite them
-PACKAGES = ["torch", "transformers", "tokenizers", "huggingface-hub", "codecarbon", "numpy", "scipy",
-            "matplotlib", "openpyxl", "javalang", "nltk", "wordninja"]
+# nvidia-ml-py and psutil are the backends CodeCarbon reads GPU energy and CPU/RAM load through
+PACKAGES = ["torch", "transformers", "tokenizers", "huggingface-hub", "codecarbon", "nvidia-ml-py", "psutil",
+            "numpy", "scipy", "matplotlib", "openpyxl", "javalang", "nltk", "wordninja"]
 MODEL = "microsoft/unixcoder-base"
 
 

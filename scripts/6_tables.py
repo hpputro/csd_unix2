@@ -7,7 +7,8 @@ number:
   table2_projects     methods per project (dataset_stats.csv)
   table3_scenarios    the balancing scenarios and their train sets (results/main_experiment.csv)
   table4_operators    valid augmentation variants per operator (augmented_pool_summary.csv)
-  table5_model_size   the ten model sizes, mean over seeds 42-44 (results/model_size.csv)
+  table5_model_size   the ten model sizes, mean over seeds 42-44 (results/model_size.csv; time and
+                      energy from results/model_size_energy.csv when the energy run exists)
   table6_scores       test scores per scenario, mean and sd over seeds 0-9 (results/main_experiment.csv)
   table7_cost         training and inference time per scenario (results/main_experiment.csv)
   projection          precision projected to lower smell proportions in deployment, Eq. (9)
@@ -98,20 +99,30 @@ def table4(summary):
     return header, body
 
 
-def table5(model_size):
+def table5(model_size, energy_rows=None):
+    """Scores from the ablation; training time, energy, emissions and peak GPU memory from the
+    energy run (results/model_size_energy.csv) when there is one, else from the ablation itself.
+    The GPU, CPU and RAM parts and the machine come with the energy run."""
+    cost_rows = energy_rows or model_size
     header = ["Encoder layers", "Parameters (M)"] + [x for _, name in METRICS for x in (name, f"{name} sd")] + [
-        "Training time (s)", "Energy (Wh)", "Emissions (g CO2e)", "Peak GPU memory (GB)"]
+        "Training time (s)", "Energy (Wh)", "Energy sd", "GPU (Wh)", "CPU (Wh)", "RAM (Wh)",
+        "Emissions (g CO2e)", "Peak GPU memory (GB)", "Host"]
     body = []
     for layers in sorted({int(r["layers"]) for r in model_size}, reverse=True):
         rs = [r for r in model_size if int(r["layers"]) == layers]
+        cs = [r for r in cost_rows if int(r["layers"]) == layers] or rs
         row = [layers, round(int(rs[0]["params_total"]) / 1e6, 1)]
         for metric, _ in METRICS:
             row += mean_sd(r[metric] for r in rs)
-        energy = [r["energy_kwh"] for r in rs if r["energy_kwh"]]
-        row += [round(statistics.mean(float(r["train_seconds"]) for r in rs), 1),
-                round(1000 * statistics.mean(float(v) for v in energy), 2) if energy else None,
-                round(1000 * statistics.mean(float(r["emissions_kg"]) for r in rs), 2) if energy else None,
-                round(statistics.mean(float(r["peak_gpu_mb"]) for r in rs) / 1024, 1)]
+        measured = [r for r in cs if r.get("energy_kwh")]
+        wh = lambda col: (round(1000 * statistics.mean(float(r.get(col) or 0) for r in measured), 2)
+                          if measured and any(r.get(col) for r in measured) else None)
+        energy = mean_sd(1000 * float(r["energy_kwh"]) for r in measured) if measured else (None, None)
+        row += [round(statistics.mean(float(r["train_seconds"]) for r in cs), 1), *energy,
+                wh("gpu_energy_kwh"), wh("cpu_energy_kwh"), wh("ram_energy_kwh"), wh("emissions_kg"),
+                round(statistics.mean(float(r["peak_gpu_mb"]) for r in cs if r["peak_gpu_mb"]) / 1024, 1)
+                if any(r["peak_gpu_mb"] for r in cs) else None,
+                ", ".join(sorted({r.get("host", "") for r in cs if r.get("host")})) or None]
         body.append(row)
     return header, body
 
@@ -246,6 +257,7 @@ def main():
     parser.add_argument("--model-size", default="results/model_size.csv")
     parser.add_argument("--results", default="results/main_experiment.csv")
     parser.add_argument("--energy", default="results/main_energy.csv")
+    parser.add_argument("--model-size-energy", default="results/model_size_energy.csv")
     parser.add_argument("--inference", default="results/inference_cost.csv")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--out", default="results/tables.xlsx")
@@ -256,7 +268,9 @@ def main():
     sheets = {"table2_projects": table2(read(args.dataset_stats)),
               "table3_scenarios": table3(results),
               "table4_operators": table4(read(args.pool_summary)),
-              "table5_model_size": table5(model_size),
+              "table5_model_size": table5(model_size, [
+                  r for r in (read(args.model_size_energy) if os.path.exists(args.model_size_energy) else [])
+                  if r["representation"] == args.representation]),
               "table6_scores": table6(results),
               "table7_cost": table7(results),
               "projection": projection(results)}

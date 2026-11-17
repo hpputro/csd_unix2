@@ -40,10 +40,21 @@ train loss of every epoch to results/main_loss.csv and the prediction for every
 test method (true label, predicted label, predicted probability of smelly) to
 results/main_predictions.csv; finished runs are skipped on a rerun.
 
+Energy: with --codecarbon, CodeCarbon (offline, grid intensity of --country)
+measures each training stage, sampling power every --measure-power-secs
+seconds (1 s, as a run lasts about 35 s and a head stage under 1 s), and the
+row records the total and its GPU, CPU and RAM parts plus how the CPU part was
+obtained (cpu_mode: intel_rapl = measured; cpu_load or constant = estimated,
+e.g. when /sys/class/powercap/intel-rapl is not readable). RAM is always an
+estimate. --energy-run repeats the experiment with CodeCarbon on into files of
+its own (results/main_energy*.csv, vectors in results/features_energy), so the
+scores of the main run stay as they are and only the energy is taken from it.
+
 Usage:
     pip install torch transformers numpy
     python scripts/4_main_experiment.py                      # seeds 0-9, every scenario, plus none with 12 layers
     python scripts/4_main_experiment.py --codecarbon --country JPN   # also measure energy (pip install codecarbon)
+    python scripts/4_main_experiment.py --energy-run          # energy of every run, into results/main_energy*.csv
     python scripts/4_main_experiment.py --seeds 0 --scenarios none weight
     python scripts/4_main_experiment.py --confirm-layers     # skip the 12-layer confirmation
     python scripts/4_main_experiment.py --representation nocomment --scenarios none augment --smell-pcts 37.7
@@ -74,7 +85,8 @@ RESULT_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "
                   "accuracy", "precision", "recall", "f1", "mcc", "tp", "fp", "fn", "tn",
                   "train_seconds", "test_seconds", "peak_gpu_mb", "energy_kwh", "emissions_kg", "country",
                   "head", "epochs", "lr", "batch_size", "grad_accum", "scheduler", "warmup_steps",
-                  "weight_decay", "max_len", "head_epochs", "head_lr", "smote_k"]
+                  "weight_decay", "max_len", "head_epochs", "head_lr", "smote_k",
+                  "gpu_energy_kwh", "cpu_energy_kwh", "ram_energy_kwh", "cpu_mode"]
 LOSS_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage", "epoch", "train_loss"]
 PREDICTION_COLUMNS = ["seed", "scenario", "smell_pct", "layers", "representation", "stage", "sample_id",
                       "true_y", "pred_y", "prob_smell"]
@@ -111,12 +123,22 @@ def start_tracker(args):
         from codecarbon import OfflineEmissionsTracker
     except ImportError:
         raise SystemExit("CodeCarbon is not installed: pip install codecarbon, or run without --codecarbon")
-    tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False)
+    tracker = OfflineEmissionsTracker(country_iso_code=args.country, log_level="error", save_to_file=False,
+                                      measure_power_secs=args.measure_power_secs)
     tracker.start()
     return tracker
 
 
+def cpu_mode(tracker):
+    """How CodeCarbon gets the CPU power: intel_rapl is measured, the other modes estimate it."""
+    for hardware in getattr(tracker, "_hardware", []):
+        if type(hardware).__name__ == "CPU":
+            return str(getattr(hardware, "_mode", ""))
+    return ""
+
+
 def stop_tracker(tracker):
+    """Stops the tracker; returns its data (None when off or failed) and the CPU mode."""
     if tracker is None:
         return None
     # CodeCarbon swallows its own errors in stop() and then never sets final_emissions_data
@@ -124,18 +146,24 @@ def stop_tracker(tracker):
     energy = getattr(tracker, "final_emissions_data", None)
     if energy is None:
         log("CodeCarbon could not report this run; energy and emissions are left empty")
+        return None
+    energy.cpu_mode = cpu_mode(tracker)
     return energy
 
 
 def cost_values(args, device, train_seconds, test_seconds, energy):
     import torch
+    # 8 decimals of kWh (0.01 mWh): a head stage uses well under 0.1 Wh
+    part = lambda name: round(getattr(energy, name), 8) if energy else ""
     return {
         "train_seconds": round(train_seconds, 1),
         "test_seconds": round(test_seconds, 2),
         "peak_gpu_mb": round(torch.cuda.max_memory_allocated() / 2**20) if device.type == "cuda" else "",
-        "energy_kwh": round(energy.energy_consumed, 6) if energy else "",
+        "energy_kwh": part("energy_consumed"),
         "emissions_kg": round(energy.emissions, 6) if energy else "",
         "country": args.country if energy else "",
+        "gpu_energy_kwh": part("gpu_energy"), "cpu_energy_kwh": part("cpu_energy"),
+        "ram_energy_kwh": part("ram_energy"), "cpu_mode": getattr(energy, "cpu_mode", "") if energy else "",
     }
 
 
@@ -402,9 +430,13 @@ def same_config(row, args):
 
 def append_rows(path, columns, rows):
     new_file = not os.path.exists(path)
+    if not new_file:
+        # A file written before columns were added keeps its own header; the new columns are left out
+        with open(path, newline="", encoding="utf-8") as f:
+            columns = next(csv.reader(f), columns)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=columns)
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
         if new_file:
             writer.writeheader()
         writer.writerows(rows)
@@ -456,15 +488,29 @@ def main():
     # near-constant GPU power, so energy follows time; pass --codecarbon to measure it
     parser.add_argument("--codecarbon", action=argparse.BooleanOptionalAction, default=False,
                         help="measure training energy and emissions with CodeCarbon (off by default)")
-    parser.add_argument("--country", default="IDN",
+    parser.add_argument("--country", default="JPN",
                         help="ISO 3166-1 alpha-3 code whose grid carbon intensity converts energy to emissions")
-    parser.add_argument("--out", default="results/main_experiment.csv")
-    parser.add_argument("--loss-out", default="results/main_loss.csv")
-    parser.add_argument("--pred-out", default="results/main_predictions.csv")
+    parser.add_argument("--measure-power-secs", type=float, default=1.0,
+                        help="CodeCarbon sampling interval (s); its own default of 15 s is longer than a run")
+    parser.add_argument("--energy-run", action="store_true",
+                        help="repeat the runs with CodeCarbon on, into results/main_energy*.csv and "
+                             "results/features_energy, leaving the main result files untouched")
+    parser.add_argument("--out", default=None, help="default results/main_experiment.csv")
+    parser.add_argument("--loss-out", default=None, help="default results/main_loss.csv")
+    parser.add_argument("--pred-out", default=None, help="default results/main_predictions.csv")
     parser.add_argument("--allow-cpu", action="store_true",
                         help="train on the CPU when no GPU is found instead of stopping")
     args = parser.parse_args()
     args.load, args.config = model_size.load_model_and_tokenizer, None
+    prefix = "results/main_energy" if args.energy_run else None
+    args.out = args.out or (f"{prefix}.csv" if prefix else "results/main_experiment.csv")
+    args.loss_out = args.loss_out or (f"{prefix}_loss.csv" if prefix else "results/main_loss.csv")
+    args.pred_out = args.pred_out or (f"{prefix}_predictions.csv" if prefix else "results/main_predictions.csv")
+    if args.energy_run:
+        args.codecarbon = True
+        # The none runs save their vectors again; they must not replace those of the main run
+        if args.features_dir == "results/features":
+            args.features_dir = "results/features_energy"
 
     # Lets the CUDA allocator grow segments instead of fragmenting; must be set before CUDA starts
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")

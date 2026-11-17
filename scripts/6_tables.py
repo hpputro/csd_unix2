@@ -12,6 +12,11 @@ number:
   table7_cost         training and inference time per scenario (results/main_experiment.csv)
   projection          precision projected to lower smell proportions in deployment, Eq. (9)
                       (results/main_experiment.csv; also written to results/main_projection.csv)
+  energy_cost         F1-score (main run) beside measured training energy per run and its GPU,
+                      CPU and RAM parts (results/main_energy.csv, from 4_main_experiment.py
+                      --energy-run; left out when the file is missing)
+  inference           latency and energy per method, 4 vs 12 layers (results/inference_cost.csv,
+                      from 9_inference_cost.py; left out when the file is missing)
 
 Means and standard deviations sit in separate numeric columns. Precision,
 recall and F1 are those of the smelly class.
@@ -22,6 +27,7 @@ Usage:
 """
 import argparse
 import csv
+import importlib
 import os
 import statistics
 
@@ -170,6 +176,47 @@ def projection(results, prevalences=(0.271, 0.10, 0.05)):
     return header, body
 
 
+def energy_cost(results, energy_rows):
+    """Per scenario: mean F1-score of the main run and its difference from no balancing (4 layers),
+    beside the energy run's mean training energy per run (Wh, sd), its difference from no
+    balancing, the GPU, CPU and RAM parts and the training time. SMOTE and the head control
+    include the no-balancing run whose encoder they reuse. F1 per Wh is the mean F1-score divided
+    by the mean energy; a difference per extra Wh is left out, since class weighting and SMOTE
+    add almost no energy and the ratio would blow up."""
+    plots = importlib.import_module("5_plots")
+    header = ["Scenario", "Smell proportion of training split (%)", "Encoder layers", "F1", "F1 diff",
+              "Energy (Wh)", "Energy sd", "Energy diff (Wh)", "GPU (Wh)", "CPU (Wh)", "RAM (Wh)",
+              "Training time (s)", "F1 per Wh", "Seeds", "CPU mode"]
+    base_f1 = statistics.mean(float(r["f1"]) for r in runs(results, "none", "27.5", "4"))
+    base_wh = plots.energy_totals(energy_rows, "none", "27.5", "4")
+    base_wh = statistics.mean(e["wh"] for e in base_wh) if base_wh else None
+    body = []
+    for scenario, share, layers, name in SCENARIOS:
+        energy = plots.energy_totals(energy_rows, scenario, share, layers)
+        f1 = [float(r["f1"]) for r in runs(results, scenario, share, layers)]
+        if not energy or not f1:
+            continue
+        wh = mean_sd(e["wh"] for e in energy)
+        body.append([name, float(share), int(layers), round(statistics.mean(f1), 3),
+                     round(statistics.mean(f1) - base_f1, 3), wh[0], wh[1],
+                     round(wh[0] - base_wh, 3) if base_wh is not None else None,
+                     *[round(statistics.mean(e[k] for e in energy), 3) for k in ("gpu", "cpu", "ram")],
+                     round(statistics.mean(e["seconds"] for e in energy), 1),
+                     round(statistics.mean(f1) / wh[0], 3) if wh[0] else None, len(energy),
+                     ", ".join(sorted({e["cpu_mode"] for e in energy if e["cpu_mode"]}))])
+    return header, body
+
+
+def inference(rows):
+    def value(text):
+        try:
+            return int(text) if text.lstrip("-").isdigit() else float(text)
+        except ValueError:
+            return text or None
+    header = list(rows[0].keys()) if rows else []
+    return header, [[value(r[c]) for c in header] for r in rows]
+
+
 def write(path, sheets):
     from openpyxl import Workbook
     from openpyxl.styles import Font
@@ -198,6 +245,8 @@ def main():
     parser.add_argument("--pool-summary", default="augmented_pool_summary.csv")
     parser.add_argument("--model-size", default="results/model_size.csv")
     parser.add_argument("--results", default="results/main_experiment.csv")
+    parser.add_argument("--energy", default="results/main_energy.csv")
+    parser.add_argument("--inference", default="results/inference_cost.csv")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--out", default="results/tables.xlsx")
     args = parser.parse_args()
@@ -211,6 +260,11 @@ def main():
               "table6_scores": table6(results),
               "table7_cost": table7(results),
               "projection": projection(results)}
+    if os.path.exists(args.energy):
+        energy_rows = [r for r in read(args.energy) if r["representation"] == args.representation]
+        sheets["energy_cost"] = energy_cost(results, energy_rows)
+    if os.path.exists(args.inference):
+        sheets["inference"] = inference(read(args.inference))
     write(args.out, sheets)
     header, body = sheets["projection"]
     projection_csv = os.path.join(os.path.dirname(args.out) or ".", "main_projection.csv")

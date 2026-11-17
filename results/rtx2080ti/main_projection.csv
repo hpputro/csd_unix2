@@ -1,0 +1,9 @@
+Scenario,Smell proportion of training split (%),Encoder layers,Recall (TPR),FPR,Precision at 27.1% smell,Precision at 27.1% smell sd,Precision at 10% smell,Precision at 10% smell sd,Precision at 5% smell,Precision at 5% smell sd
+No balancing,27.5,4,0.789,0.078,0.791,0.066,0.54,0.098,0.363,0.091
+"No balancing, 12 layers",27.5,12,0.774,0.092,0.759,0.087,0.502,0.144,0.337,0.151
+Class weighting,37.7,4,0.816,0.078,0.796,0.056,0.545,0.088,0.367,0.086
+Class weighting,50.0,4,0.853,0.086,0.788,0.038,0.529,0.057,0.349,0.052
+Augmentation,37.7,4,0.853,0.073,0.814,0.04,0.57,0.067,0.389,0.068
+Augmentation,50.0,4,0.774,0.065,0.82,0.057,0.584,0.093,0.406,0.092
+SMOTE,37.7,4,0.811,0.076,0.801,0.06,0.555,0.108,0.38,0.119
+SMOTE,50.0,4,0.832,0.082,0.792,0.048,0.537,0.078,0.359,0.078

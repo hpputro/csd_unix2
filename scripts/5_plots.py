@@ -208,15 +208,16 @@ def energy_style(scenario, share):
 
 
 def plot_energy_pareto(rows, energy_rows, out):
-    """Mean F1-score (main run, seeds 0-9) against mean training energy per run (energy run,
-    CodeCarbon, GPU + CPU + RAM) for every scenario, with one standard deviation across seeds on
-    both axes. Filled markers: 37.7% smell in the training split, hollow: 50%. The dashed steps
-    join the Pareto-optimal scenarios, those no other scenario beats on both lower energy and
-    higher F1-score."""
+    """Mean F1-score (seeds 0-9) against mean training energy per run (CodeCarbon, GPU + CPU +
+    RAM) for every scenario, without spread bars so the y axis can zoom in on the differences
+    between scenarios (Table 3 and Table 4 give the standard deviations). Filled markers: 37.7%
+    smell in the training split, hollow: 50%. The dashed steps join the Pareto-optimal scenarios,
+    those no other scenario beats on both lower energy and higher F1-score. The legend follows
+    the rows of Table 3: the unbalanced runs, then one column per balancing method."""
     plt = setup()
     from matplotlib.lines import Line2D
-    fig, ax = plt.subplots(figsize=(6.4, 4.6))
-    points, handles = [], []
+    fig, ax = plt.subplots(figsize=(6.4, 4.4))
+    points, found = [], {}
     for scenario, share, name, _, layers in ENERGY_ROWS:
         energy = energy_totals(energy_rows, scenario, share, layers)
         f1 = [float(r["f1"]) for r in rows
@@ -224,18 +225,15 @@ def plot_energy_pareto(rows, energy_rows, out):
         if not energy or not f1:
             continue
         x, y = statistics.mean(e["wh"] for e in energy), statistics.mean(f1)
-        xs = statistics.stdev(e["wh"] for e in energy) if len(energy) > 1 else 0.0
-        ys = statistics.stdev(f1) if len(f1) > 1 else 0.0
         marker, color, filled = energy_style(scenario, share)
         if layers == "12":
             marker, color, filled = "s", INK, True
-        ax.errorbar([x], [y], xerr=[xs], yerr=[ys], fmt="none", ecolor=color, elinewidth=0.8, alpha=0.3)
-        ax.plot([x], [y], marker=marker, markersize=8, linestyle="none", zorder=3, color=color,
-                markerfacecolor=color if filled else "white", markeredgecolor=color, markeredgewidth=1.5)
-        label = name
-        handles.append(Line2D([], [], marker=marker, linestyle="none", markersize=7, color=color,
-                              markerfacecolor=color if filled else "white", markeredgecolor=color,
-                              markeredgewidth=1.5, label=label.replace(" (SMOTE control)", "")))
+        ax.plot([x], [y], marker=marker, markersize=9, linestyle="none", zorder=3, color=color,
+                markerfacecolor=color if filled else "white", markeredgecolor=color, markeredgewidth=1.6)
+        found[(scenario, share, layers)] = Line2D(
+            [], [], marker=marker, linestyle="none", markersize=7, color=color,
+            markerfacecolor=color if filled else "white", markeredgecolor=color, markeredgewidth=1.5,
+            label=name.replace(" (SMOTE control)", "").replace(", 12 layers", " (12 layers)"))
         points.append((x, y))
     # Pareto front: going up in energy, keep each scenario that beats every cheaper one on F1-score
     front, best = [], -1.0
@@ -246,11 +244,20 @@ def plot_energy_pareto(rows, energy_rows, out):
     if len(front) > 1:
         ax.step([p[0] for p in front], [p[1] for p in front], where="post", color=MUTED, linewidth=1,
                 linestyle=(0, (4, 3)), zorder=2)
+    ys = [p[1] for p in points]
+    pad = max(0.01, 0.15 * (max(ys) - min(ys)))
+    ax.set_ylim(min(ys) - pad, max(ys) + pad)
     ax.set_xlim(left=0)
     ax.set_xlabel("Training energy per run (Wh)", color=MUTED)
     ax.set_ylabel("F1-score on the test split", color=MUTED)
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.15),
-              ncol=3, handletextpad=0.3, columnspacing=1.0)
+    # Matplotlib fills legend columns top to bottom: one column for the unbalanced runs (no
+    # balancing, 12 layers, head retrained) and one per balancing method, as in Table 3
+    blank = Line2D([], [], linestyle="none", label=" ")
+    order = [[("none", "27.5", "4"), ("none", "27.5", "12"), ("head", "27.5", "4")]] + [
+        [(m, "37.7", "4"), (m, "50.0", "4")] for m, _, _, _ in METHODS]
+    handles = [found.get(k, blank) for column in order for k in column + [None] * (3 - len(column))]
+    ax.legend(handles=handles, frameon=False, fontsize=7.8, loc="upper center", bbox_to_anchor=(0.5, -0.15),
+              ncol=4, handletextpad=0.3, columnspacing=0.9)
     style(ax, "F1-score versus training energy", grid_axis="both")
     save(plt, fig, out)
 

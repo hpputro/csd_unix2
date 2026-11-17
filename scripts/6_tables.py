@@ -256,7 +256,7 @@ def main():
     parser.add_argument("--pool-summary", default="augmented_pool_summary.csv")
     parser.add_argument("--model-size", default="results/model_size.csv")
     parser.add_argument("--results", default="results/main_experiment.csv")
-    parser.add_argument("--energy", default="results/main_energy.csv")
+    parser.add_argument("--energy", default="results/main_experiment.csv")
     parser.add_argument("--model-size-energy", default="results/model_size_energy.csv")
     parser.add_argument("--inference", default="results/inference_cost.csv")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")

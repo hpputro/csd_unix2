@@ -471,7 +471,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", default="results/main_experiment.csv")
     parser.add_argument("--loss", default="results/main_loss.csv")
-    parser.add_argument("--energy", default="results/main_energy.csv",
+    parser.add_argument("--energy", default="results/main_experiment.csv",
                         help="energy run of 4_main_experiment.py --energy-run; its figures are skipped when absent")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--figures-dir", default="figures")

@@ -1,19 +1,21 @@
 Python                           3.12.9
 OS                               Linux-6.8.0-107-generic-x86_64-with-glibc2.39
-CPU                              Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz
+CPU                              AMD Ryzen 9 5950X 16-Core Processor
 CUDA (torch build)               12.4
 cuDNN                            90100
-GPU 0                            NVIDIA GeForce RTX 2080 Ti, 10.6 GB
+GPU 0                            NVIDIA GeForce RTX 3090, 23.6 GB
 NVIDIA driver                    590.48.01
 torch                            2.6.0+cu124
 transformers                     4.46.3
 tokenizers                       0.20.1
 huggingface-hub                  0.29.2
 codecarbon                       3.3.1
+nvidia-ml-py                     13.615.71
+psutil                           7.2.2
 numpy                            2.4.4
 scipy                            1.15.1
 matplotlib                       3.10.3
-openpyxl                         not installed
+openpyxl                         3.1.5
 javalang                         not installed
 nltk                             not installed
 wordninja                        not installed

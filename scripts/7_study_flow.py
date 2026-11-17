@@ -6,7 +6,7 @@ and datasets/dataset_seed0.csv (one Monte Carlo split; every seed has the same
 counts): dataset and filter, Monte Carlo split into 3 ablation seeds and 10
 main seeds, the model-size ablation that chose 4 layers, balancing and training
 of the training split at the three smell proportions, and the evaluation on
-the test split (original code), with training and inference energy measured
+the test split (original code), with training time and energy measured
 besides the detection metrics, as the title of the paper promises.
 
 Usage:
@@ -63,7 +63,7 @@ def draw(c, out):
     3 ablation seeds go to the model-size ablation and whose 10 main seeds send the training
     split to balancing and training (fed by the 4 layers the ablation chose) and the test split,
     original code, straight to the evaluation. The evaluation lists the detection metrics and
-    the measured cost: training and inference energy (CodeCarbon) besides time, as in the title."""
+    the measured cost: training time and energy (CodeCarbon), as in the title."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -135,8 +135,7 @@ def draw(c, out):
     # Evaluation on the test split, with the measured cost
     frame(73, 2.5, 26, 13.5)
     label(86, 13.6, "Evaluation on test split", 11, True)
-    label(86, 8.2, "Accuracy, precision, recall,\nF1-score, MCC\ntraining time and energy,\n"
-                   "inference energy (CodeCarbon)", 8.3)
+    label(86, 8.2, "Accuracy, precision, recall,\nF1-score, MCC\ntraining time and energy\n(CodeCarbon)", 8.3)
 
     # Flow
     arrow([(27, 32), (33, 32)])

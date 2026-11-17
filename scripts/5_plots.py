@@ -13,6 +13,11 @@ Reads results/main_experiment.csv and results/main_loss.csv written by
   results/main_stats.csv                           the numbers behind figure 11
   figures/figure12_main_cost.png                   F1-score against training time per scenario
   figures/figure8_main_loss.png                    train loss per epoch of the 4- and 12-layer none runs
+  figures/figure13_main_energy_pareto.png          F1-score against measured training energy, Pareto front
+  figures/figure14_main_energy_parts.png           training energy per scenario split into GPU, CPU and RAM
+
+The two energy figures need results/main_energy.csv from 4_main_experiment.py
+--energy-run and are skipped without it.
 
 The number is that of the figure in the paper draft; main_ after it marks a
 figure of this script, as dataset_, augment_ and model_size_ mark those of
@@ -169,6 +174,112 @@ def plot_projection(rows, metric, label, out, share="37.7", test_pi=19 / 70, mar
     ax.legend(frameon=False, fontsize=9, loc="upper center", bbox_to_anchor=(0.5, -0.22), ncol=4,
               handletextpad=0.3, columnspacing=1.2, markerscale=1.6)
     style(ax, f"Projected {label.lower() if label == 'Precision' else label} by smell proportion in deployment")
+    save(plt, fig, out)
+
+
+def energy_totals(energy_rows, scenario, share, layers):
+    """Per seed of the energy run: energy (Wh) and its GPU, CPU and RAM parts, and training time (s).
+    SMOTE and the head control are charged the no-balancing run of the same seed and layers too,
+    since they reuse its encoder."""
+    base = {r["seed"]: r for r in energy_rows
+            if r["scenario"] == "none" and r["layers"] == layers and r["energy_kwh"]}
+    out = []
+    for r in energy_rows:
+        if r["scenario"] != scenario or r["smell_pct"] != share or r["layers"] != layers or not r["energy_kwh"]:
+            continue
+        rs = [r] + ([base[r["seed"]]] if r["stage"] == "head" and r["seed"] in base else [])
+        wh = lambda col: sum(1000 * float(x[col] or 0) for x in rs)
+        out.append({"seed": r["seed"], "wh": wh("energy_kwh"), "gpu": wh("gpu_energy_kwh"),
+                    "cpu": wh("cpu_energy_kwh"), "ram": wh("ram_energy_kwh"),
+                    "seconds": sum(float(x["train_seconds"]) for x in rs), "cpu_mode": r.get("cpu_mode", "")})
+    return out
+
+
+# Scenarios of the energy figures: the 4-layer rows and the 12-layer no-balancing run
+ENERGY_ROWS = [(s, p, n, c, "4") for s, p, n, c in SCENARIO_ROWS] + [
+    ("none", "27.5", "No balancing, 12 layers", INK, "12")]
+
+
+def energy_style(scenario, share):
+    """Marker of a scenario: method shape and color, filled at 37.7% and hollow at 50%."""
+    shapes = {"none": "o", "head": "D", **{m: k for m, _, _, k in METHODS}}
+    colors = {"none": REFERENCE, "head": REFERENCE, **{m: c for m, _, c, _ in METHODS}}
+    return shapes[scenario], colors[scenario], share != "50.0"
+
+
+def plot_energy_pareto(rows, energy_rows, out):
+    """Mean F1-score (main run, seeds 0-9) against mean training energy per run (energy run,
+    CodeCarbon, GPU + CPU + RAM) for every scenario, with one standard deviation across seeds on
+    both axes. Filled markers: 37.7% smell in the training split, hollow: 50%. The dashed steps
+    join the Pareto-optimal scenarios, those no other scenario beats on both lower energy and
+    higher F1-score."""
+    plt = setup()
+    from matplotlib.lines import Line2D
+    fig, ax = plt.subplots(figsize=(6.4, 4.6))
+    points, handles = [], []
+    for scenario, share, name, _, layers in ENERGY_ROWS:
+        energy = energy_totals(energy_rows, scenario, share, layers)
+        f1 = [float(r["f1"]) for r in rows
+              if r["scenario"] == scenario and r["smell_pct"] == share and r["layers"] == layers]
+        if not energy or not f1:
+            continue
+        x, y = statistics.mean(e["wh"] for e in energy), statistics.mean(f1)
+        xs = statistics.stdev(e["wh"] for e in energy) if len(energy) > 1 else 0.0
+        ys = statistics.stdev(f1) if len(f1) > 1 else 0.0
+        marker, color, filled = energy_style(scenario, share)
+        if layers == "12":
+            marker, color, filled = "s", INK, True
+        ax.errorbar([x], [y], xerr=[xs], yerr=[ys], fmt="none", ecolor=color, elinewidth=0.8, alpha=0.3)
+        ax.plot([x], [y], marker=marker, markersize=8, linestyle="none", zorder=3, color=color,
+                markerfacecolor=color if filled else "white", markeredgecolor=color, markeredgewidth=1.5)
+        label = name
+        handles.append(Line2D([], [], marker=marker, linestyle="none", markersize=7, color=color,
+                              markerfacecolor=color if filled else "white", markeredgecolor=color,
+                              markeredgewidth=1.5, label=label.replace(" (SMOTE control)", "")))
+        points.append((x, y))
+    # Pareto front: going up in energy, keep each scenario that beats every cheaper one on F1-score
+    front, best = [], -1.0
+    for x, y in sorted(points):
+        if y > best:
+            front.append((x, y))
+            best = y
+    if len(front) > 1:
+        ax.step([p[0] for p in front], [p[1] for p in front], where="post", color=MUTED, linewidth=1,
+                linestyle=(0, (4, 3)), zorder=2)
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Training energy per run (Wh)", color=MUTED)
+    ax.set_ylabel("F1-score on the test split", color=MUTED)
+    ax.legend(handles=handles, frameon=False, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.15),
+              ncol=3, handletextpad=0.3, columnspacing=1.0)
+    style(ax, "F1-score versus training energy", grid_axis="both")
+    save(plt, fig, out)
+
+
+def plot_energy_parts(energy_rows, out):
+    """Mean training energy per run split into GPU, CPU and RAM (CodeCarbon), one bar per scenario,
+    the total written at the end of the bar. SMOTE and the head control include the no-balancing
+    run whose encoder they reuse. RAM is estimated by CodeCarbon, and the CPU too unless the
+    rows' cpu_mode is intel_rapl."""
+    plt = setup()
+    parts = [("gpu", "GPU", "#3d3d3a"), ("cpu", "CPU", "#8a8984"), ("ram", "RAM", "#c9c8c3")]
+    bars = []
+    for scenario, share, name, _, layers in ENERGY_ROWS:
+        energy = energy_totals(energy_rows, scenario, share, layers)
+        if energy:
+            bars.append((name.replace(" (SMOTE control)", ""), {k: statistics.mean(e[k] for e in energy)
+                                                                for k, _, _ in parts + [("wh", "", "")]}))
+    fig, ax = plt.subplots(figsize=(6.4, 0.42 * len(bars) + 1.4))
+    for y, (name, mean) in enumerate(reversed(bars)):
+        left = 0.0
+        for key, label, color in parts:
+            ax.barh(y, mean[key], left=left, color=color, height=0.6, label=label if y == 0 else None)
+            left += mean[key]
+        ax.text(left + 0.05, y, f"{mean['wh']:.2f} Wh", va="center", fontsize=8, color=MUTED)
+    ax.set_yticks(range(len(bars)), [n for n, _ in reversed(bars)])
+    ax.set_xlabel("Training energy per run (Wh)", color=MUTED)
+    ax.set_xlim(0, max(m["wh"] for _, m in bars) * 1.18 if bars else 1)
+    ax.legend(frameon=False, fontsize=8.5, loc="upper center", bbox_to_anchor=(0.5, -0.11), ncol=3)
+    style(ax, "Training energy by component", grid_axis="x")
     save(plt, fig, out)
 
 
@@ -360,6 +471,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--results", default="results/main_experiment.csv")
     parser.add_argument("--loss", default="results/main_loss.csv")
+    parser.add_argument("--energy", default="results/main_energy.csv",
+                        help="energy run of 4_main_experiment.py --energy-run; its figures are skipped when absent")
     parser.add_argument("--representation", choices=["comment", "nocomment"], default="comment")
     parser.add_argument("--figures-dir", default="figures")
     parser.add_argument("--suffix", default="", help="added to every file name, e.g. _nocomment")
@@ -378,6 +491,12 @@ def main():
                                                                f"main_stats{args.suffix}.csv"))
     plot_cost(rows, out("figure12_main_cost"))
     plot_loss(loss_rows, out("figure8_main_loss"))
+    if os.path.exists(args.energy):
+        energy_rows = [r for r in read(args.energy) if r["representation"] == args.representation]
+        plot_energy_pareto(rows, energy_rows, out("figure13_main_energy_pareto"))
+        plot_energy_parts(energy_rows, out("figure14_main_energy_parts"))
+    else:
+        print(f"no {args.energy}: energy figures skipped (run 4_main_experiment.py --energy-run)")
 
 
 if __name__ == "__main__":

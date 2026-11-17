@@ -1,0 +1,11 @@
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[codecarbon INFO @ 16:36:05] offline tracker init
+[codecarbon WARNING @ 16:36:05] Multiple instances of codecarbon are allowed to run at the same time.
+[16:36:30] 4 layers, batch 16: 1.237 ms and 0.1352 mWh per method
+[16:36:35] 4 layers, one at a time: median 2.245 ms, 95th percentile 2.449 ms
+Some weights of RobertaForSequenceClassification were not initialized from the model checkpoint at microsoft/unixcoder-base and are newly initialized: ['classifier.dense.bias', 'classifier.dense.weight', 'classifier.out_proj.bias', 'classifier.out_proj.weight']
+You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
+[16:37:42] 12 layers, batch 16: 3.598 ms and 0.3937 mWh per method
+[16:37:52] 12 layers, one at a time: median 5.744 ms, 95th percentile 6.636 ms
+-> results/inference_cost.csv

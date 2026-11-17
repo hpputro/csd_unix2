@@ -1,0 +1,5 @@
+layers,setting,batch_size,methods,repeats,seconds,ms_per_method,ms_per_method_p95,energy_kwh,gpu_energy_kwh,cpu_energy_kwh,ram_energy_kwh,mwh_per_method,cpu_mode,country,peak_gpu_mb,params_total,host
+4,batch,16,350,50,21.65,1.237,,0.00236595,0.00207427,6.334e-05,0.00022833,0.1352,cpu_load,JPN,756,69228290,atlantis.dbms
+4,latency,1,350,3,2.38,2.245,2.449,,,,,,,,,69228290,atlantis.dbms
+12,batch,16,350,50,62.97,3.598,,0.00688953,0.00604339,0.00018371,0.00066243,0.3937,cpu_load,JPN,1362,125931266,atlantis.dbms
+12,latency,1,350,3,6.11,5.744,6.636,,,,,,,,,125931266,atlantis.dbms

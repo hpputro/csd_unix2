@@ -24,6 +24,15 @@ Usage:
     python -m nltk.downloader wordnet
     python scripts/1_dataset_augmentation.py
     python scripts/1_dataset_augmentation.py --summary-only   # summaries and figure from the existing pool
+
+Energy: --codecarbon measures building the pool (all methods x operators, CPU
+only) with CodeCarbon and appends one row to results/augmentation_energy.csv
+(time, energy and its GPU, CPU and RAM parts, machine). To measure without
+touching the pool the experiments used, write into a copy:
+    cp -r ds_comment ds_nocomment /tmp/aug/
+    python scripts/1_dataset_augmentation.py --codecarbon \
+        --comment-dir /tmp/aug/ds_comment --nocomment-dir /tmp/aug/ds_nocomment \
+        --out /tmp/aug/augmented_pool.csv --summary /tmp/aug/summary.csv --figure /tmp/aug/figure.png
 """
 import argparse
 import contextlib
@@ -33,6 +42,7 @@ import io
 import os
 import random
 import sys
+import time
 import zlib
 from collections import Counter
 
@@ -212,6 +222,11 @@ def main():
     parser.add_argument("--figure", default="figures/figure4_augment_operators.png")
     parser.add_argument("--summary-only", action="store_true",
                         help="rebuild the summaries from the existing pool without augmenting")
+    parser.add_argument("--codecarbon", action="store_true",
+                        help="measure the energy of building the pool with CodeCarbon")
+    parser.add_argument("--country", default="JPN")
+    parser.add_argument("--measure-power-secs", type=float, default=1.0)
+    parser.add_argument("--energy-out", default="results/augmentation_energy.csv")
     args = parser.parse_args()
 
     if args.summary_only:
@@ -241,6 +256,12 @@ def augment(args):
     with open(args.csv, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
+    # Only the pool itself is measured: tokenizer loading and the summaries stay outside
+    tracker = None
+    if args.codecarbon:
+        model_size = importlib.import_module("3_model_size")
+        tracker = model_size.start_tracker(args)
+    start = time.time()
     records = build_pool(rows, args.comment_dir, args.nocomment_dir, operators, args.seed,
                          count_tokens, args.max_len - SPECIAL_TOKENS)
 
@@ -248,6 +269,20 @@ def augment(args):
         writer = csv.DictWriter(f, fieldnames=list(records[0]))
         writer.writeheader()
         writer.writerows(records)
+    seconds = time.time() - start
+    if tracker:
+        energy = model_size.stop_tracker(tracker)
+        row = {"methods": len(rows), "operators": len(operators), "seconds": round(seconds, 1),
+               **model_size.energy_values(energy, args.country)}
+        new_file = not os.path.exists(args.energy_out)
+        os.makedirs(os.path.dirname(args.energy_out) or ".", exist_ok=True)
+        with open(args.energy_out, "a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(row))
+            if new_file:
+                writer.writeheader()
+            writer.writerow(row)
+        wh = 1000 * float(row["energy_kwh"]) if row["energy_kwh"] != "" else float("nan")
+        print(f"pool built in {seconds:.0f} s, {wh:.2f} Wh -> {args.energy_out}")
 
     print(f"{len(rows)} methods x {len(operators)} operators -> {args.out}")
     return records

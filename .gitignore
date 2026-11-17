@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .vscode/
+
+# [CLS] vectors of the energy run: only read by its own SMOTE stage, made again on every energy run
+results/features_energy/

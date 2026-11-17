@@ -1,0 +1,18 @@
+350 original methods (96 smelly), 348 groups
+          seed     test_clean     test_smell    train_clean    train_smell    added_clean    added_smell smell_pct_before smell_pct_after added_clean_top added_smell_top  smell_pct_top operators_used
+             0             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             1             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             2             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             3             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             4             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             5             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             6             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             7             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             8             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+             9             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+            42             51             19            203             77             51             77           27.5           37.7             51            177           50.0             14
+            43             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+            44             51             19            203             77             51             77           27.5           37.7             51            177           50.0             13
+test share per stratum over 33 strata: min 0.115, max 0.346
+methods never in a test split over 13 seeds: 18
+-> datasets/dataset_seed<seed>.csv, datasets_summary.csv, split_check.csv

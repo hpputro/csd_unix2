@@ -1,0 +1,2 @@
+methods,operators,seconds,energy_kwh,emissions_kg,country,gpu_energy_kwh,cpu_energy_kwh,ram_energy_kwh,cpu_mode,host
+404,14,34.4,0.00068294,0.0003315,JPN,0.00022146,0.00010029,0.0003612,cpu_load,atlantis.dbms
